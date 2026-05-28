@@ -20,6 +20,7 @@ class Analyzer {
       throughput: this.computeThroughput(),
       cooldowns: this.computeCooldowns(),
       coh: this.computeCoH(),
+      procs: this.computeProcs(),
       renew: this.computeRenew(),
       mana: this.computeMana(),
       activity: this.computeActivity(),
@@ -289,6 +290,92 @@ class Analyzer {
     };
   }
 
+  // ======= PROCS =======
+  computeProcs() {
+    const results = [];
+
+    for (const [key, procDef] of Object.entries(PROC_BUFFS)) {
+      // Find buff gains and fades for this proc
+      const gains = this.data.buffs.filter(b =>
+        procDef.ids.includes(b.auraId) && b.type === 'gain'
+      );
+      const fades = this.data.buffs.filter(b =>
+        procDef.ids.includes(b.auraId) && b.type === 'fade'
+      );
+
+      if (gains.length === 0) continue;
+
+      // Calculate uptime
+      let totalUptime = 0;
+      for (let i = 0; i < gains.length; i++) {
+        const gainTime = gains[i].timestamp;
+        // Find matching fade
+        const matchingFade = fades.find(f => f.timestamp > gainTime &&
+          (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
+        const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 15000; // assume 15s if no fade
+        totalUptime += Math.min(fadeTime, this.data.fightEnd) - gainTime;
+      }
+      const uptimePct = (totalUptime / this.fightDuration) * 100;
+
+      // Check if proc was consumed (used) vs wasted (expired)
+      let consumed = 0;
+      let wasted = 0;
+
+      if (key === 'CLEARCASTING' || key === 'SURGE_OF_LIGHT' || key === 'EYE_OF_GRUUL') {
+        // These are "use it or lose it" procs - check if a cast happened during the buff window
+        for (let i = 0; i < gains.length; i++) {
+          const gainTime = gains[i].timestamp;
+          const matchingFade = fades.find(f => f.timestamp > gainTime &&
+            (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
+          const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 15000;
+
+          // Was a qualifying cast made during this window?
+          const castDuring = this.data.casts.find(c =>
+            c.timestamp > gainTime && c.timestamp <= fadeTime + 200
+          );
+          if (castDuring) {
+            consumed++;
+          } else {
+            wasted++;
+          }
+        }
+      } else if (key === 'FLEXIBILITY') {
+        // Flexibility: check if Greater Heal was cast during the buff
+        for (let i = 0; i < gains.length; i++) {
+          const gainTime = gains[i].timestamp;
+          const matchingFade = fades.find(f => f.timestamp > gainTime &&
+            (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
+          const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 6000;
+
+          const ghCast = this.data.casts.find(c =>
+            c.timestamp > gainTime && c.timestamp <= fadeTime + 200 &&
+            SPELL_IDS.GREATER_HEAL.includes(c.spellId)
+          );
+          if (ghCast) {
+            consumed++;
+          } else {
+            wasted++;
+          }
+        }
+      }
+
+      results.push({
+        key,
+        name: procDef.name,
+        description: procDef.description,
+        category: procDef.category,
+        procs: gains.length,
+        uptimePct,
+        consumed,
+        wasted,
+        hasUsageTracking: consumed + wasted > 0,
+        timeline: gains.map(g => ({ time: g.timestamp - this.data.fightStart })),
+      });
+    }
+
+    return results;
+  }
+
   // ======= RENEW =======
   computeRenew() {
     const renewCasts = this.data.casts.filter(c =>
@@ -444,6 +531,14 @@ class Analyzer {
     const spellCostBreakdown = Array.from(manaBySpell.values())
       .sort((a, b) => b.totalCost - a.totalCost);
 
+    // Mana-saving procs
+    const clearcastProcs = this.data.buffs.filter(b =>
+      PROC_BUFFS.CLEARCASTING.ids.includes(b.auraId) && b.type === 'gain'
+    ).length;
+    const eyeOfGrulProcs = this.data.buffs.filter(b =>
+      PROC_BUFFS.EYE_OF_GRUUL.ids.includes(b.auraId) && b.type === 'gain'
+    ).length;
+
     return {
       maxMana,
       startMana: startMana || maxMana,
@@ -458,6 +553,8 @@ class Analyzer {
       shadowfiendUses: shadowfiendUses.map(c => ({ time: c.fightTime })),
       innervates: innervates.map(b => ({ time: b.fightTime })),
       consumablesUsed: potionUses.length + runeUses.length,
+      clearcastProcs,
+      eyeOfGrulProcs,
     };
   }
 

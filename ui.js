@@ -259,6 +259,66 @@ class UI {
     el.innerHTML = html;
   }
 
+  // ======= PROCS =======
+  static renderProcs(procs) {
+    const el = document.getElementById('procs-content');
+
+    if (!procs || procs.length === 0) {
+      el.innerHTML = `<p style="color:#999">No tracked procs detected in this fight. Procs tracked: Clearcasting (Holy Concentration), Surge of Light, Flexibility (T4 2pc), Eye of Gruul, Quagmirran's Eye, Power Infusion, Bloodlust/Heroism.</p>`;
+      return;
+    }
+
+    // Group by category
+    const categories = {
+      mana: { label: '💧 Mana Procs', items: [] },
+      throughput: { label: '⚡ Throughput Procs', items: [] },
+      haste: { label: '🏃 Haste Procs', items: [] },
+    };
+
+    for (const proc of procs) {
+      if (categories[proc.category]) {
+        categories[proc.category].items.push(proc);
+      }
+    }
+
+    let html = '';
+
+    for (const [catKey, cat] of Object.entries(categories)) {
+      if (cat.items.length === 0) continue;
+
+      html += `<h3 class="mt-16">${cat.label}</h3>`;
+
+      for (const proc of cat.items) {
+        html += `<div class="card" style="margin-bottom:12px;padding:12px;background:#1a1a2e;">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">`;
+        html += `<strong style="color:#ffd700">${proc.name}</strong>`;
+        html += `<span style="color:#999;font-size:12px">${proc.description}</span>`;
+        html += `</div>`;
+
+        html += `<div class="stats-grid" style="margin-bottom:8px;">`;
+        html += `<div class="stat-box"><div class="stat-value">${proc.procs}</div><div class="stat-label">Total Procs</div></div>`;
+        html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(proc.uptimePct)}</div><div class="stat-label">Uptime</div></div>`;
+
+        if (proc.hasUsageTracking) {
+          const usagePct = proc.procs > 0 ? (proc.consumed / proc.procs * 100) : 0;
+          html += `<div class="stat-box"><div class="stat-value">${proc.consumed}</div><div class="stat-label">Used</div></div>`;
+          html += `<div class="stat-box"><div class="stat-value" style="color:${proc.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${proc.wasted}</div><div class="stat-label">Wasted</div></div>`;
+          html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(usagePct)}</div><div class="stat-label">Usage Rate</div></div>`;
+        }
+        html += `</div>`;
+
+        // Timeline of procs
+        if (proc.timeline.length > 0 && proc.timeline.length <= 50) {
+          html += `<div style="font-size:12px;color:#888;">Proc times: ${proc.timeline.map(t => UI.formatTime(t.time)).join(', ')}</div>`;
+        }
+
+        html += `</div>`;
+      }
+    }
+
+    el.innerHTML = html;
+  }
+
   // ======= RENEW =======
   static renderRenew(renew) {
     const el = document.getElementById('renew-content');
@@ -355,6 +415,20 @@ class UI {
         </tr>`;
       }
       html += `</tbody></table>`;
+    }
+
+    // Mana-saving procs
+    if (mana.clearcastProcs > 0 || mana.eyeOfGrulProcs > 0) {
+      html += `<h3 class="mt-16">Mana-Saving Procs</h3>`;
+      html += `<div class="stats-grid">`;
+      if (mana.clearcastProcs > 0) {
+        html += `<div class="stat-box"><div class="stat-value">${mana.clearcastProcs}</div><div class="stat-label">Clearcasting Procs</div></div>`;
+      }
+      if (mana.eyeOfGrulProcs > 0) {
+        html += `<div class="stat-box"><div class="stat-value">${mana.eyeOfGrulProcs}</div><div class="stat-label">Eye of Gruul Procs</div></div>`;
+      }
+      html += `</div>`;
+      html += `<p style="color:#999;font-size:12px;margin-top:4px">See the Procs tab for detailed usage tracking (consumed vs wasted).</p>`;
     }
 
     // Consumables & mana cooldowns

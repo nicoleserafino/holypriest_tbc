@@ -66,6 +66,52 @@ const AURA_IDS = {
   SURGE_OF_LIGHT: [33151],
 };
 
+// Proc buffs to track for analysis
+const PROC_BUFFS = {
+  CLEARCASTING: {
+    name: 'Clearcasting (Holy Concentration)',
+    ids: [34754],
+    description: 'Free spell cast after critical heal',
+    category: 'mana',
+  },
+  SURGE_OF_LIGHT: {
+    name: 'Surge of Light',
+    ids: [33151],
+    description: 'Free instant Flash Heal after spell crit',
+    category: 'throughput',
+  },
+  FLEXIBILITY: {
+    name: 'Flexibility (T4 2pc)',
+    ids: [37237],
+    description: 'Reduces Greater Heal cast time by 0.1s, stacks to 4',
+    category: 'throughput',
+  },
+  EYE_OF_GRUUL: {
+    name: 'Eye of Gruul',
+    ids: [37228],
+    description: 'Next heal costs 450 less mana (15s window)',
+    category: 'mana',
+  },
+  QUAGMIRRANS_EYE: {
+    name: "Quagmirran's Eye",
+    ids: [33370],
+    description: '+320 spell haste for 6s',
+    category: 'haste',
+  },
+  POWER_INFUSION: {
+    name: 'Power Infusion',
+    ids: [10060],
+    description: '+20% spell haste, -20% mana cost for 15s',
+    category: 'haste',
+  },
+  BLOODLUST: {
+    name: 'Bloodlust/Heroism',
+    ids: [2825, 32182],
+    description: '+30% haste for 40s',
+    category: 'haste',
+  },
+};
+
 // Spell metadata
 const SPELL_DATA = {
   GREATER_HEAL: {
