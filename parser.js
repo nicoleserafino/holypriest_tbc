@@ -10,6 +10,14 @@ class LogParser {
     this.fightStart = rawData.fight.start_time;
     this.fightEnd = rawData.fight.end_time;
     this.fightDuration = this.fightEnd - this.fightStart;
+    this.actors = rawData.actors || {};
+  }
+
+  /**
+   * Resolve actor name from ID
+   */
+  resolveActor(id, fallbackName) {
+    return this.actors[id] || fallbackName || 'Unknown';
   }
 
   /**
@@ -61,7 +69,7 @@ class LogParser {
           spellKey,
           spellName: event.ability.name || getSpellName(spellId),
           targetId: event.targetID,
-          targetName: event.targetName || 'Unknown',
+          targetName: this.resolveActor(event.targetID, event.targetName),
           castTime: event.timestamp - startTime,
           rank: getSpellRank(spellId),
           fightTime: event.timestamp - this.fightStart,
@@ -87,7 +95,7 @@ class LogParser {
         spellKey: getSpellDataKey(spellId),
         spellName: event.ability.name || getSpellName(spellId),
         targetId: event.targetID,
-        targetName: event.targetName || 'Unknown',
+        targetName: this.resolveActor(event.targetID, event.targetName),
         amount: event.amount || 0,
         overheal: event.overheal || 0,
         absorbed: event.absorbed || 0,

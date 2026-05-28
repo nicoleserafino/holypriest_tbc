@@ -136,6 +136,7 @@ class WCLApi {
       combatantInfo: summary,
       fight,
       playerId,
+      actors: null, // populated by caller from report data
     };
   }
 }

@@ -149,6 +149,19 @@
         (pct, label) => updateProgress(pct * 100, label)
       );
 
+      // Build actor name lookup from report data
+      const actorMap = {};
+      for (const f of (reportData.friendlies || [])) {
+        actorMap[f.id] = f.name;
+      }
+      for (const e of (reportData.enemies || [])) {
+        actorMap[e.id] = e.name;
+      }
+      for (const p of (reportData.friendlyPets || [])) {
+        actorMap[p.id] = p.name;
+      }
+      rawData.actors = actorMap;
+
       updateProgress(80, 'Parsing events...');
       const parser = new LogParser(rawData, selectedTanks);
       const parsedData = parser.parse();
