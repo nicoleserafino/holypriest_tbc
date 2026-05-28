@@ -19,6 +19,7 @@ class Analyzer {
       summary: this.computeSummary(),
       throughput: this.computeThroughput(),
       cooldowns: this.computeCooldowns(),
+      coh: this.computeCoH(),
       renew: this.computeRenew(),
       mana: this.computeMana(),
       activity: this.computeActivity(),
@@ -194,6 +195,98 @@ class Analyzer {
     }
 
     return totalOffCD;
+  }
+
+  // ======= CIRCLE OF HEALING =======
+  computeCoH() {
+    const cohCasts = this.data.casts.filter(c =>
+      SPELL_IDS.CIRCLE_OF_HEALING.includes(c.spellId)
+    );
+    const cohHeals = this.data.heals.filter(h =>
+      SPELL_IDS.CIRCLE_OF_HEALING.includes(h.spellId)
+    );
+
+    const totalCasts = cohCasts.length;
+    if (totalCasts === 0) {
+      return { totalCasts: 0, message: 'No Circle of Healing casts detected.' };
+    }
+
+    // Group heals by cast timestamp (within 100ms = same cast)
+    const castGroups = [];
+    let currentGroup = { timestamp: cohHeals[0]?.timestamp, heals: [] };
+
+    for (const heal of cohHeals) {
+      if (Math.abs(heal.timestamp - currentGroup.timestamp) < 100) {
+        currentGroup.heals.push(heal);
+      } else {
+        if (currentGroup.heals.length > 0) castGroups.push(currentGroup);
+        currentGroup = { timestamp: heal.timestamp, heals: [heal] };
+      }
+    }
+    if (currentGroup.heals.length > 0) castGroups.push(currentGroup);
+
+    // Compute metrics per cast
+    const totalHealing = cohHeals.reduce((s, h) => s + h.amount, 0);
+    const totalOverheal = cohHeals.reduce((s, h) => s + h.overheal, 0);
+    const totalRaw = totalHealing + totalOverheal;
+    const overhealPct = totalRaw > 0 ? (totalOverheal / totalRaw) * 100 : 0;
+    const totalTargetsHit = cohHeals.length;
+    const avgTargets = castGroups.length > 0 ? totalTargetsHit / castGroups.length : 0;
+    const critCount = cohHeals.filter(h => h.isCrit).length;
+    const critPct = totalTargetsHit > 0 ? (critCount / totalTargetsHit) * 100 : 0;
+
+    // Cooldown efficiency: CoH has 6s CD
+    const cohCD = 6000;
+    const possibleCasts = Math.floor(this.fightDuration / cohCD) + 1;
+    const cdEfficiency = (totalCasts / possibleCasts) * 100;
+
+    // Per-cast breakdown
+    const castDetails = castGroups.map(group => {
+      const healing = group.heals.reduce((s, h) => s + h.amount, 0);
+      const overheal = group.heals.reduce((s, h) => s + h.overheal, 0);
+      const raw = healing + overheal;
+      const targets = group.heals.map(h => h.targetName || 'Unknown');
+      return {
+        time: group.timestamp - this.data.fightStart,
+        targetsHit: group.heals.length,
+        targets,
+        healing,
+        overheal,
+        overhealPct: raw > 0 ? (overheal / raw) * 100 : 0,
+        hasCrit: group.heals.some(h => h.isCrit),
+      };
+    });
+
+    // Identify wasted casts (>80% overheal)
+    const wastedCasts = castDetails.filter(c => c.overhealPct > 80).length;
+
+    // Target frequency (who got healed by CoH most)
+    const targetFreq = new Map();
+    for (const heal of cohHeals) {
+      const name = heal.targetName || 'Unknown';
+      if (!targetFreq.has(name)) targetFreq.set(name, { name, count: 0, healing: 0, overheal: 0 });
+      const entry = targetFreq.get(name);
+      entry.count++;
+      entry.healing += heal.amount;
+      entry.overheal += heal.overheal;
+    }
+    const targetBreakdown = Array.from(targetFreq.values())
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalCasts,
+      possibleCasts,
+      cdEfficiency,
+      avgTargets,
+      totalHealing,
+      totalOverheal,
+      overhealPct,
+      critPct,
+      wastedCasts,
+      castDetails,
+      targetBreakdown,
+      hps: totalHealing / this.fightDurationSec,
+    };
   }
 
   // ======= RENEW =======

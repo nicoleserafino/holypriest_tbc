@@ -189,6 +189,7 @@
     UI.renderSummary(results.summary);
     UI.renderThroughput(results.throughput);
     UI.renderCooldowns(results.cooldowns);
+    UI.renderCoH(results.coh);
     UI.renderRenew(results.renew);
     UI.renderMana(results.mana);
     UI.renderActivity(results.activity);

@@ -181,6 +181,84 @@ class UI {
     el.innerHTML = html;
   }
 
+  // ======= CIRCLE OF HEALING =======
+  static renderCoH(coh) {
+    const el = document.getElementById('coh-content');
+
+    if (coh.totalCasts === 0) {
+      el.innerHTML = `<p style="color:#999">${coh.message}</p>`;
+      return;
+    }
+
+    let html = `
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value">${coh.totalCasts}</div>
+          <div class="stat-label">Total Casts</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${coh.avgTargets.toFixed(1)}</div>
+          <div class="stat-label">Avg Targets Hit</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatPct(coh.overhealPct)}</div>
+          <div class="stat-label">Overheal %</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatPct(coh.critPct)}</div>
+          <div class="stat-label">Crit %</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatNumber(Math.round(coh.hps))}</div>
+          <div class="stat-label">CoH HPS</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatPct(coh.cdEfficiency)}</div>
+          <div class="stat-label">CD Efficiency (${coh.totalCasts}/${coh.possibleCasts})</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${coh.wastedCasts}</div>
+          <div class="stat-label">Wasted Casts (&gt;80% OH)</div>
+        </div>
+      </div>
+    `;
+
+    // Target breakdown
+    if (coh.targetBreakdown.length > 0) {
+      html += `<h3 class="mt-16">Targets Healed</h3>`;
+      html += `<table><thead><tr><th>Player</th><th>Hits</th><th>Healing</th><th>Overheal</th><th>OH%</th></tr></thead><tbody>`;
+      for (const t of coh.targetBreakdown.slice(0, 20)) {
+        const raw = t.healing + t.overheal;
+        const ohPct = raw > 0 ? (t.overheal / raw * 100).toFixed(1) : '0.0';
+        html += `<tr>
+          <td>${t.name}</td>
+          <td>${t.count}</td>
+          <td>${UI.formatNumber(t.healing)}</td>
+          <td>${UI.formatNumber(t.overheal)}</td>
+          <td>${ohPct}%</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    // Per-cast timeline
+    html += `<h3 class="mt-16">Cast-by-Cast Breakdown</h3>`;
+    html += `<table><thead><tr><th>Time</th><th>Targets</th><th>Healing</th><th>OH%</th><th>Crit</th></tr></thead><tbody>`;
+    for (const cast of coh.castDetails) {
+      const ohClass = cast.overhealPct > 80 ? 'style="color:#ff6b6b"' : '';
+      html += `<tr ${ohClass}>
+        <td>${UI.formatTime(cast.time)}</td>
+        <td>${cast.targetsHit} (${cast.targets.join(', ')})</td>
+        <td>${UI.formatNumber(cast.healing)}</td>
+        <td>${cast.overhealPct.toFixed(1)}%</td>
+        <td>${cast.hasCrit ? '✓' : ''}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+
+    el.innerHTML = html;
+  }
+
   // ======= RENEW =======
   static renderRenew(renew) {
     const el = document.getElementById('renew-content');
