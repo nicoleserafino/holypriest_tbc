@@ -147,44 +147,22 @@ class LogParser {
 
   /**
    * Parse mana resource events (extracted from cast/heal events classResources)
+   * WCL v1 classResources format: { amount: maxMana, max: manaCost, type: currentManaAfterCast }
    */
   parseManaEvents() {
     const events = [];
 
-    // Extract mana info from cast events (they include classResources)
+    // Extract mana info from cast events
     for (const event of this.rawData.castEvents) {
-      if (event.classResources) {
-        // classResources is an array; mana entry has type matching the max mana value
-        // In TBC WCL v1, the format varies - look for the entry with reasonable mana values
-        const manaRes = event.classResources[0]; // First resource is typically mana for priests
-        if (manaRes && manaRes.amount !== undefined) {
-          events.push({
-            timestamp: event.timestamp,
-            type: 'cast',
-            amount: 0,
-            waste: 0,
-            currentMana: manaRes.amount,
-            maxMana: manaRes.max || manaRes.amount,
-            spellId: event.ability?.guid,
-            spellName: event.ability?.name,
-            fightTime: event.timestamp - this.fightStart,
-          });
-        }
-      }
-    }
-
-    // Also check healing events for mana snapshots
-    for (const event of this.rawData.healingEvents) {
-      if (event.classResources && event.sourceID === this.rawData.playerId) {
+      if (event.classResources && event.classResources.length > 0) {
         const manaRes = event.classResources[0];
         if (manaRes && manaRes.amount !== undefined) {
           events.push({
             timestamp: event.timestamp,
-            type: 'heal',
-            amount: 0,
-            waste: 0,
-            currentMana: manaRes.amount,
-            maxMana: manaRes.max || manaRes.amount,
+            type: 'cast',
+            manaCost: manaRes.max || 0,
+            currentMana: manaRes.type,  // 'type' field is actually current mana after cast
+            maxMana: manaRes.amount,     // 'amount' field is max mana
             spellId: event.ability?.guid,
             spellName: event.ability?.name,
             fightTime: event.timestamp - this.fightStart,

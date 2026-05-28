@@ -236,22 +236,51 @@ class UI {
     let html = `
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${mana.maxMana > 0 ? UI.formatNumber(mana.maxMana) : 'N/A'}</div>
-          <div class="stat-label">Max Mana</div>
+          <div class="stat-value">${UI.formatNumber(mana.maxMana)}</div>
+          <div class="stat-label">Max Mana Pool</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${mana.endMana !== null ? UI.formatNumber(mana.endMana) : 'N/A'}</div>
-          <div class="stat-label">End Mana</div>
+          <div class="stat-value">${UI.formatNumber(mana.startMana)}</div>
+          <div class="stat-label">Starting Mana</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${UI.formatNumber(mana.totalManaGained)}</div>
-          <div class="stat-label">Total Mana Gained</div>
+          <div class="stat-value">${UI.formatNumber(mana.totalManaSpent)}</div>
+          <div class="stat-label">Total Mana Spent</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatNumber(mana.totalManaRegenerated)}</div>
+          <div class="stat-label">Total Mana Regenerated</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${UI.formatNumber(mana.endMana)}</div>
+          <div class="stat-label">Ending Mana</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${Math.round(mana.manaPerSecond)}/s</div>
+          <div class="stat-label">Avg Mana Spent/sec</div>
         </div>
       </div>
     `;
 
-    // Cooldown usage timeline
-    html += `<h3 class="mt-16">Mana Cooldown Usage</h3>`;
+    // Mana spent per spell breakdown
+    if (mana.spellCostBreakdown && mana.spellCostBreakdown.length > 0) {
+      html += `<h3 class="mt-16">Mana Spent by Spell</h3>`;
+      html += `<table><thead><tr><th>Spell</th><th>Casts</th><th>Avg Cost</th><th>Total Mana</th><th>% of Total</th></tr></thead><tbody>`;
+      for (const spell of mana.spellCostBreakdown) {
+        const pct = mana.totalManaSpent > 0 ? (spell.totalCost / mana.totalManaSpent * 100).toFixed(1) : 0;
+        html += `<tr>
+          <td>${spell.name}</td>
+          <td>${spell.casts}</td>
+          <td>${UI.formatNumber(Math.round(spell.totalCost / spell.casts))}</td>
+          <td>${UI.formatNumber(spell.totalCost)}</td>
+          <td>${pct}%</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    // Consumables & mana cooldowns
+    html += `<h3 class="mt-16">Mana Consumables & Cooldowns</h3>`;
 
     const allUses = [
       ...mana.potionUses.map(u => ({ ...u, type: '🧪 Potion' })),
@@ -261,21 +290,22 @@ class UI {
     ].sort((a, b) => a.time - b.time);
 
     if (allUses.length > 0) {
-      html += `<table><thead><tr><th>Time</th><th>Cooldown</th></tr></thead><tbody>`;
+      html += `<p><strong>${allUses.length}</strong> mana consumable${allUses.length > 1 ? 's' : ''} used during this fight.</p>`;
+      html += `<table><thead><tr><th>Time</th><th>Type</th><th>Name</th></tr></thead><tbody>`;
       for (const use of allUses) {
-        html += `<tr><td>${UI.formatTime(use.time)}</td><td>${use.type} — ${use.name || ''}</td></tr>`;
+        html += `<tr><td>${UI.formatTime(use.time)}</td><td>${use.type}</td><td>${use.name || ''}</td></tr>`;
       }
       html += `</tbody></table>`;
     } else {
-      html += `<p style="color:#999">No mana cooldowns detected.</p>`;
+      html += `<p style="color:#999">No mana consumables or cooldowns detected.</p>`;
     }
 
-    // Mana timeline chart (simple text-based)
+    // Mana timeline chart
     if (mana.manaTimeline.length > 0) {
-      html += `<h3 class="mt-16">Mana Timeline</h3>`;
+      html += `<h3 class="mt-16">Mana Over Time</h3>`;
       html += `<div id="mana-chart" style="height:120px;background:#0f3460;border-radius:4px;position:relative;overflow:hidden;">`;
 
-      const maxMana = mana.manaTimeline[0]?.max || 1;
+      const maxMana = mana.maxMana || 1;
       const fightLen = mana.manaTimeline[mana.manaTimeline.length - 1]?.time || 1;
 
       // Sample points for SVG path
@@ -291,6 +321,8 @@ class UI {
         <polyline points="${points.join(' ')}" fill="none" stroke="#ffd700" stroke-width="0.5"/>
         <polyline points="0,100 ${points.join(' ')} 100,100" fill="rgba(255,215,0,0.1)" stroke="none"/>
       </svg>`;
+      html += `<div style="position:absolute;top:4px;left:8px;font-size:11px;color:#ffd700">${UI.formatNumber(maxMana)}</div>`;
+      html += `<div style="position:absolute;bottom:4px;left:8px;font-size:11px;color:#999">0</div>`;
       html += `</div>`;
     }
 

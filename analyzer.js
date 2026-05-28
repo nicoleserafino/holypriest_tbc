@@ -283,20 +283,53 @@ class Analyzer {
   computeMana() {
     const manaEvents = this.data.manaEvents;
 
-    // Track mana over time
+    // Track mana over time using corrected field mapping
     const manaTimeline = [];
+    let maxMana = 0;
     let startMana = null;
     let endMana = null;
+    let totalManaSpent = 0;
+
+    // Compute mana spent per spell
+    const manaBySpell = new Map();
 
     for (const event of manaEvents) {
-      if (event.currentMana !== undefined) {
-        if (startMana === null) startMana = event.currentMana;
-        endMana = event.currentMana;
-        manaTimeline.push({
-          time: event.fightTime,
-          mana: event.currentMana,
-          max: event.maxMana,
-        });
+      if (event.maxMana > maxMana) maxMana = event.maxMana;
+      if (startMana === null) {
+        // First event: estimate starting mana as currentMana + manaCost of first cast
+        startMana = event.currentMana + (event.manaCost || 0);
+      }
+      endMana = event.currentMana;
+      totalManaSpent += event.manaCost || 0;
+
+      // Track mana cost per spell
+      if (event.manaCost > 0 && event.spellName) {
+        const key = event.spellName;
+        if (!manaBySpell.has(key)) {
+          manaBySpell.set(key, { name: key, totalCost: 0, casts: 0 });
+        }
+        const entry = manaBySpell.get(key);
+        entry.totalCost += event.manaCost;
+        entry.casts++;
+      }
+
+      manaTimeline.push({
+        time: event.fightTime,
+        mana: event.currentMana,
+        max: maxMana,
+      });
+    }
+
+    // Detect mana gains (where current mana goes UP between events)
+    let totalManaRegenerated = 0;
+    for (let i = 1; i < manaEvents.length; i++) {
+      const prev = manaEvents[i - 1];
+      const curr = manaEvents[i];
+      // Expected mana = prev.currentMana - curr.manaCost
+      // If actual > expected, the difference is regen/gain
+      const expectedMana = prev.currentMana - (curr.manaCost || 0);
+      if (curr.currentMana > expectedMana) {
+        totalManaRegenerated += curr.currentMana - expectedMana;
       }
     }
 
@@ -314,20 +347,24 @@ class Analyzer {
       AURA_IDS.INNERVATE.includes(b.auraId) && b.type === 'gain'
     );
 
-    // Mana gains from resource events
-    const manaGains = manaEvents.filter(e => e.amount > 0);
-    const totalManaGained = manaGains.reduce((s, e) => s + e.amount, 0);
+    // Spell cost breakdown sorted by total cost
+    const spellCostBreakdown = Array.from(manaBySpell.values())
+      .sort((a, b) => b.totalCost - a.totalCost);
 
     return {
-      startMana,
-      endMana,
+      maxMana,
+      startMana: startMana || maxMana,
+      endMana: endMana || 0,
+      totalManaSpent,
+      totalManaRegenerated,
+      manaPerSecond: totalManaSpent / this.fightDurationSec,
+      spellCostBreakdown,
       manaTimeline,
       potionUses: potionUses.map(c => ({ time: c.fightTime, name: c.spellName })),
       runeUses: runeUses.map(c => ({ time: c.fightTime, name: c.spellName })),
       shadowfiendUses: shadowfiendUses.map(c => ({ time: c.fightTime })),
       innervates: innervates.map(b => ({ time: b.fightTime })),
-      totalManaGained,
-      maxMana: manaTimeline.length > 0 ? manaTimeline[0].max : 0,
+      consumablesUsed: potionUses.length + runeUses.length,
     };
   }
 
