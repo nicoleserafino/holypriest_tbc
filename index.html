@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TBC Holy Priest Log Analyzer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>⛪ TBC Holy Priest Log Analyzer</h1>
+    <p class="subtitle">Analyze your healing performance from Warcraft Logs</p>
+  </header>
+
+  <main>
+    <!-- Setup Section -->
+    <section id="setup-section" class="card">
+      <h2>Setup</h2>
+      <div class="form-group">
+        <label for="api-key">WCL API Key (v1)</label>
+        <input type="password" id="api-key" placeholder="Paste your Warcraft Logs v1 API key">
+        <small>Get yours at <a href="https://classic.warcraftlogs.com/profile" target="_blank">classic.warcraftlogs.com/profile</a></small>
+      </div>
+      <div class="form-group">
+        <label for="report-url">Report URL or ID</label>
+        <input type="text" id="report-url" placeholder="e.g. https://classic.warcraftlogs.com/reports/ABC123 or just ABC123">
+      </div>
+      <button id="load-btn" class="btn-primary">Load Report</button>
+      <div id="load-error" class="error hidden"></div>
+      <div id="load-progress" class="progress hidden">
+        <div class="progress-bar"></div>
+        <span class="progress-text">Loading...</span>
+      </div>
+    </section>
+
+    <!-- Fight Selection -->
+    <section id="fight-section" class="card hidden">
+      <h2>Select Fight</h2>
+      <select id="fight-select"></select>
+      <h3>Select Player</h3>
+      <select id="player-select"></select>
+      <div class="form-group">
+        <label>Tank(s) <small>(for Renew uptime tracking)</small></label>
+        <div id="tank-select"></div>
+      </div>
+      <button id="analyze-btn" class="btn-primary">Analyze</button>
+    </section>
+
+    <!-- Results -->
+    <section id="results-section" class="hidden">
+      <!-- Summary -->
+      <div class="card" id="summary-card">
+        <h2>Summary</h2>
+        <div id="summary-content" class="stats-grid"></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="throughput">Throughput</button>
+        <button class="tab" data-tab="cooldowns">Cooldowns</button>
+        <button class="tab" data-tab="renew">Renew</button>
+        <button class="tab" data-tab="mana">Mana</button>
+        <button class="tab" data-tab="activity">Activity</button>
+        <button class="tab" data-tab="timeline">Timeline</button>
+      </div>
+
+      <div id="tab-throughput" class="tab-content card">
+        <h2>Healing Throughput</h2>
+        <div id="throughput-content"></div>
+      </div>
+
+      <div id="tab-cooldowns" class="tab-content card hidden">
+        <h2>Cooldown Usage</h2>
+        <div id="cooldowns-content"></div>
+      </div>
+
+      <div id="tab-renew" class="tab-content card hidden">
+        <h2>Renew Analysis</h2>
+        <div id="renew-content"></div>
+      </div>
+
+      <div id="tab-mana" class="tab-content card hidden">
+        <h2>Mana Management</h2>
+        <div id="mana-content"></div>
+      </div>
+
+      <div id="tab-activity" class="tab-content card hidden">
+        <h2>Activity &amp; GCD Usage</h2>
+        <div id="activity-content"></div>
+      </div>
+
+      <div id="tab-timeline" class="tab-content card hidden">
+        <h2>Timeline</h2>
+        <div id="timeline-content"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>TBC Holy Priest Log Analyzer &bull; Uses <a href="https://classic.warcraftlogs.com" target="_blank">Warcraft Logs</a> v1 API</p>
+  </footer>
+
+  <script src="models.js"></script>
+  <script src="api.js"></script>
+  <script src="parser.js"></script>
+  <script src="analyzer.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
