@@ -81,6 +81,9 @@ class WCLApi {
       if (sourceId !== undefined && sourceId !== null) {
         params.sourceid = sourceId;
       }
+      if (options.targetid !== undefined) {
+        params.targetid = options.targetid;
+      }
       if (options.filter) {
         params.filter = options.filter;
       }
@@ -108,7 +111,7 @@ class WCLApi {
   async loadAnalysisData(reportId, fight, playerId, onProgress) {
     const { start_time, end_time } = fight;
     let step = 0;
-    const totalSteps = 4;
+    const totalSteps = 5;
 
     const progress = (label) => {
       step++;
@@ -122,7 +125,17 @@ class WCLApi {
     const castEvents = await this.getEvents(reportId, 'casts', start_time, end_time, playerId);
 
     progress('Loading buff events...');
-    const buffEvents = await this.getEvents(reportId, 'buffs', start_time, end_time, playerId);
+    const buffEventsSource = await this.getEvents(reportId, 'buffs', start_time, end_time, playerId);
+    const buffEventsTarget = await this.getEvents(reportId, 'buffs', start_time, end_time, null, {
+      targetid: playerId,
+    });
+    // Merge and deduplicate
+    const buffMap = new Map();
+    for (const e of [...buffEventsSource, ...buffEventsTarget]) {
+      const key = `${e.timestamp}-${e.ability?.guid}-${e.type}`;
+      if (!buffMap.has(key)) buffMap.set(key, e);
+    }
+    const buffEvents = Array.from(buffMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
     progress('Loading combatant info...');
     const summary = await this.getCombatantInfo(reportId, fight.id, start_time, end_time);

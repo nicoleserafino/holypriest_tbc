@@ -82,7 +82,7 @@ const PROC_BUFFS = {
   },
   FLEXIBILITY: {
     name: 'Flexibility (T4 2pc)',
-    ids: [37237],
+    ids: [37565],
     description: 'Reduces Greater Heal cast time by 0.1s, stacks to 4',
     category: 'throughput',
   },
