@@ -93,8 +93,8 @@ const PROC_BUFFS = {
     category: 'mana',
   },
   QUAGMIRRANS_EYE: {
-    name: "Quagmirran's Eye",
-    ids: [33370],
+    name: "Scarab of the Infinite Cycle",
+    ids: [35480],
     description: '+320 spell haste for 6s',
     category: 'haste',
   },
