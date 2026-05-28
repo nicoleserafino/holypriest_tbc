@@ -138,25 +138,54 @@ class LogParser {
   }
 
   /**
-   * Parse mana resource events
+   * Parse mana resource events (extracted from cast/heal events classResources)
    */
   parseManaEvents() {
     const events = [];
 
-    for (const event of this.rawData.resourceEvents) {
-      events.push({
-        timestamp: event.timestamp,
-        type: event.type,
-        amount: event.resourceChange || 0,
-        waste: event.waste || 0,
-        currentMana: event.classResources?.[0]?.amount,
-        maxMana: event.classResources?.[0]?.max,
-        spellId: event.ability?.guid,
-        spellName: event.ability?.name,
-        fightTime: event.timestamp - this.fightStart,
-      });
+    // Extract mana info from cast events (they include classResources)
+    for (const event of this.rawData.castEvents) {
+      if (event.classResources) {
+        // classResources is an array; mana entry has type matching the max mana value
+        // In TBC WCL v1, the format varies - look for the entry with reasonable mana values
+        const manaRes = event.classResources[0]; // First resource is typically mana for priests
+        if (manaRes && manaRes.amount !== undefined) {
+          events.push({
+            timestamp: event.timestamp,
+            type: 'cast',
+            amount: 0,
+            waste: 0,
+            currentMana: manaRes.amount,
+            maxMana: manaRes.max || manaRes.amount,
+            spellId: event.ability?.guid,
+            spellName: event.ability?.name,
+            fightTime: event.timestamp - this.fightStart,
+          });
+        }
+      }
     }
 
+    // Also check healing events for mana snapshots
+    for (const event of this.rawData.healingEvents) {
+      if (event.classResources && event.sourceID === this.rawData.playerId) {
+        const manaRes = event.classResources[0];
+        if (manaRes && manaRes.amount !== undefined) {
+          events.push({
+            timestamp: event.timestamp,
+            type: 'heal',
+            amount: 0,
+            waste: 0,
+            currentMana: manaRes.amount,
+            maxMana: manaRes.max || manaRes.amount,
+            spellId: event.ability?.guid,
+            spellName: event.ability?.name,
+            fightTime: event.timestamp - this.fightStart,
+          });
+        }
+      }
+    }
+
+    events.sort((a, b) => a.timestamp - b.timestamp);
     return events;
   }
 
