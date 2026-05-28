@@ -21,11 +21,17 @@ class WCLApi {
 
     const resp = await fetch(url.toString());
     if (!resp.ok) {
+      const text = await resp.text();
       if (resp.status === 401) throw new Error('Invalid API key. Check your WCL v1 key.');
       if (resp.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`API error: ${resp.status} ${resp.statusText}`);
+      throw new Error(`API error ${resp.status} on ${endpoint}: ${text.slice(0, 100)}`);
     }
-    return resp.json();
+    const text = await resp.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Invalid JSON from ${endpoint}: ${text.slice(0, 80)}`);
+    }
   }
 
   /**
@@ -116,9 +122,7 @@ class WCLApi {
     const castEvents = await this.getEvents(reportId, 'casts', start_time, end_time, playerId);
 
     progress('Loading buff events...');
-    const buffEvents = await this.getEvents(reportId, 'buffs', start_time, end_time, null, {
-      filter: `target.id=${playerId}`,
-    });
+    const buffEvents = await this.getEvents(reportId, 'buffs', start_time, end_time, playerId);
 
     progress('Loading combatant info...');
     const summary = await this.getCombatantInfo(reportId, fight.id, start_time, end_time);
