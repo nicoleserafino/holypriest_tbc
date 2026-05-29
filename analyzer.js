@@ -122,14 +122,14 @@ class Analyzer {
       SPELL_IDS.CIRCLE_OF_HEALING.includes(h.spellId)
     );
     const cohPossible = Math.floor(this.fightDuration / 6000) + 1;
+    const cohTotalRaw = cohHeals.reduce((s, h) => s + h.amount + h.overheal, 0);
+    const cohOverhealAmt = cohHeals.reduce((s, h) => s + h.overheal, 0);
     results.circleOfHealing = {
       casts: cohCasts.length,
-      possibleCasts: cohPossible,
-      usagePct: cohPossible > 0 ? (cohCasts.length / cohPossible) * 100 : 0,
       totalHealing: cohHeals.reduce((s, h) => s + h.amount, 0),
-      totalOverheal: cohHeals.reduce((s, h) => s + h.overheal, 0),
+      totalOverheal: cohOverhealAmt,
+      overhealPct: cohTotalRaw > 0 ? (cohOverhealAmt / cohTotalRaw) * 100 : 0,
       avgTargetsHit: cohCasts.length > 0 ? cohHeals.length / cohCasts.length : 0,
-      timeOffCooldown: this.computeTimeOffCooldown(cohCasts, 6000),
     };
 
     // Prayer of Mending
@@ -236,10 +236,9 @@ class Analyzer {
     const critCount = cohHeals.filter(h => h.isCrit).length;
     const critPct = totalTargetsHit > 0 ? (critCount / totalTargetsHit) * 100 : 0;
 
-    // Cooldown efficiency: CoH has 6s CD
-    const cohCD = 6000;
-    const possibleCasts = Math.floor(this.fightDuration / cohCD) + 1;
-    const cdEfficiency = (totalCasts / possibleCasts) * 100;
+    // Average healing per cast
+    const avgHealingPerCast = castGroups.length > 0 ?
+      totalHealing / castGroups.length : 0;
 
     // Per-cast breakdown
     const castDetails = castGroups.map(group => {
@@ -276,9 +275,8 @@ class Analyzer {
 
     return {
       totalCasts,
-      possibleCasts,
-      cdEfficiency,
       avgTargets,
+      avgHealingPerCast,
       totalHealing,
       totalOverheal,
       overhealPct,
@@ -839,10 +837,16 @@ class Analyzer {
 
     // CoH usage
     if (cooldowns.circleOfHealing.casts > 0) {
-      if (cooldowns.circleOfHealing.usagePct < 50) {
-        obs.push({ type: 'warning', text: `Circle of Healing used ${cooldowns.circleOfHealing.casts}/${cooldowns.circleOfHealing.possibleCasts} possible casts (${cooldowns.circleOfHealing.usagePct.toFixed(0)}%). This is your most efficient heal — try to use it on cooldown when raid damage is present.` });
-      } else if (cooldowns.circleOfHealing.usagePct > 75) {
-        obs.push({ type: 'good', text: `Good Circle of Healing usage (${cooldowns.circleOfHealing.usagePct.toFixed(0)}% of possible casts).` });
+      const cohOhPct = this.data.heals
+        .filter(h => SPELL_IDS.CIRCLE_OF_HEALING.includes(h.spellId))
+        .reduce((acc, h) => {
+          acc.oh += h.overheal;
+          acc.raw += h.amount + h.overheal;
+          return acc;
+        }, { oh: 0, raw: 0 });
+      const cohOverheal = cohOhPct.raw > 0 ? (cohOhPct.oh / cohOhPct.raw) * 100 : 0;
+      if (cohOverheal > 50) {
+        obs.push({ type: 'warning', text: `Circle of Healing has ${cohOverheal.toFixed(0)}% overheal. Consider casting it only when multiple targets have taken damage.` });
       }
     }
 

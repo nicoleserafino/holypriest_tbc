@@ -111,12 +111,8 @@ class UI {
       <h3 class="spell-holy">Circle of Healing</h3>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${coh.casts} / ${coh.possibleCasts}</div>
-          <div class="stat-label">Casts / Possible</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(coh.usagePct)}</div>
-          <div class="stat-label">Usage Rate</div>
+          <div class="stat-value">${coh.casts}</div>
+          <div class="stat-label">Total Casts</div>
         </div>
         <div class="stat-box">
           <div class="stat-value">${coh.avgTargetsHit.toFixed(1)}</div>
@@ -127,8 +123,8 @@ class UI {
           <div class="stat-label">Total Healing</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${UI.formatTime(coh.timeOffCooldown)}</div>
-          <div class="stat-label">Time Off Cooldown</div>
+          <div class="stat-value">${UI.formatPct(coh.overhealPct)}</div>
+          <div class="stat-label">Overheal %</div>
         </div>
       </div>
     `;
@@ -213,8 +209,8 @@ class UI {
           <div class="stat-label">CoH HPS</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(coh.cdEfficiency)}</div>
-          <div class="stat-label">CD Efficiency (${coh.totalCasts}/${coh.possibleCasts})</div>
+          <div class="stat-value">${UI.formatNumber(Math.round(coh.avgHealingPerCast))}</div>
+          <div class="stat-label">Avg Healing per Cast</div>
         </div>
         <div class="stat-box">
           <div class="stat-value">${coh.wastedCasts}</div>
