@@ -263,55 +263,147 @@ class UI {
   static renderProcs(procs) {
     const el = document.getElementById('procs-content');
 
-    if (!procs || procs.length === 0) {
-      el.innerHTML = `<p style="color:#999">No tracked procs detected in this fight. Procs tracked: Clearcasting (Holy Concentration), Surge of Light, Flexibility (T4 2pc), Eye of Gruul, Quagmirran's Eye, Power Infusion, Bloodlust/Heroism.</p>`;
+    if (!procs || (Object.keys(procs).length === 0) ||
+        (!procs.clearcasting && !procs.flexibility && !procs.surgeOfLight &&
+         !procs.eyeOfGruul && (!procs.hasteWindows || procs.hasteWindows.length === 0))) {
+      el.innerHTML = `<p style="color:#999">No tracked procs detected in this fight. Tracked: Clearcasting, Surge of Light, Flexibility (T4 2pc), Eye of Gruul, Scarab of the Infinite Cycle, Power Infusion, Bloodlust/Heroism.</p>`;
       return;
-    }
-
-    // Group by category
-    const categories = {
-      mana: { label: '💧 Mana Procs', items: [] },
-      throughput: { label: '⚡ Throughput Procs', items: [] },
-      haste: { label: '🏃 Haste Procs', items: [] },
-    };
-
-    for (const proc of procs) {
-      if (categories[proc.category]) {
-        categories[proc.category].items.push(proc);
-      }
     }
 
     let html = '';
 
-    for (const [catKey, cat] of Object.entries(categories)) {
-      if (cat.items.length === 0) continue;
+    // --- CLEARCASTING ---
+    if (procs.clearcasting) {
+      const cc = procs.clearcasting;
+      html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+      html += `<h3 style="color:#ffd700;margin-bottom:4px">${cc.name}</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${cc.description}</p>`;
 
-      html += `<h3 class="mt-16">${cat.label}</h3>`;
+      html += `<div class="stats-grid">`;
+      html += `<div class="stat-box"><div class="stat-value">${cc.procs}</div><div class="stat-label">Total Procs</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatNumber(cc.totalManaSaved)}</div><div class="stat-label">Mana Saved</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(cc.efficiency)}</div><div class="stat-label">Efficiency vs Max Rank GH</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${cc.optimalUses}</div><div class="stat-label">Used on Expensive Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${cc.suboptimalUses > 0 ? '#ff6b6b' : '#4ecdc4'}">${cc.suboptimalUses}</div><div class="stat-label">Used on Cheap Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${cc.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${cc.wasted}</div><div class="stat-label">Expired Unused</div></div>`;
+      html += `</div>`;
 
-      for (const proc of cat.items) {
-        html += `<div class="card" style="margin-bottom:12px;padding:12px;background:#1a1a2e;">`;
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">`;
-        html += `<strong style="color:#ffd700">${proc.name}</strong>`;
-        html += `<span style="color:#999;font-size:12px">${proc.description}</span>`;
+      // Detail table
+      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Spell Used</th><th>Mana Saved</th><th>Optimal?</th></tr></thead><tbody>`;
+      for (const d of cc.details) {
+        const style = d.wasted ? 'style="color:#ff6b6b"' : (!d.isOptimal ? 'style="color:#f0ad4e"' : '');
+        html += `<tr ${style}>
+          <td>${UI.formatTime(d.time)}</td>
+          <td>${d.spellUsed || 'Expired'}</td>
+          <td>${d.manaSaved > 0 ? UI.formatNumber(d.manaSaved) : '-'}</td>
+          <td>${d.wasted ? 'WASTED' : (d.isOptimal ? 'Yes' : 'Low value')}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+      html += `</div>`;
+    }
+
+    // --- FLEXIBILITY ---
+    if (procs.flexibility) {
+      const flex = procs.flexibility;
+      html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+      html += `<h3 style="color:#ffd700;margin-bottom:4px">${flex.name}</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${flex.description}</p>`;
+
+      html += `<div class="stats-grid">`;
+      html += `<div class="stat-box"><div class="stat-value">${flex.procs}</div><div class="stat-label">Total Procs</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${flex.ghFollowups}</div><div class="stat-label">Followed by Greater Heal</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(flex.ghRate)}</div><div class="stat-label">GH Follow-up Rate</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.missedOpportunities > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.missedOpportunities}</div><div class="stat-label">Missed Opportunities</div></div>`;
+      html += `</div>`;
+
+      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Used on GH?</th><th>Cast Instead</th></tr></thead><tbody>`;
+      for (const d of flex.details) {
+        const style = d.usedOnGH ? '' : 'style="color:#f0ad4e"';
+        html += `<tr ${style}>
+          <td>${UI.formatTime(d.time)}</td>
+          <td>${d.usedOnGH ? 'Yes' : 'No'}</td>
+          <td>${d.castInstead || (d.expired ? 'Expired' : '-')}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+      html += `</div>`;
+    }
+
+    // --- SURGE OF LIGHT ---
+    if (procs.surgeOfLight) {
+      const sol = procs.surgeOfLight;
+      html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+      html += `<h3 style="color:#ffd700;margin-bottom:4px">${sol.name}</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${sol.description}</p>`;
+
+      html += `<div class="stats-grid">`;
+      html += `<div class="stat-box"><div class="stat-value">${sol.procs}</div><div class="stat-label">Total Procs</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${sol.consumed}</div><div class="stat-label">Consumed</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${sol.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${sol.wasted}</div><div class="stat-label">Wasted</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(sol.usageRate)}</div><div class="stat-label">Usage Rate</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${sol.avgReactionMs}ms</div><div class="stat-label">Avg Reaction Time</div></div>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
+    // --- EYE OF GRUUL ---
+    if (procs.eyeOfGruul) {
+      const eog = procs.eyeOfGruul;
+      html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+      html += `<h3 style="color:#ffd700;margin-bottom:4px">${eog.name}</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${eog.description}</p>`;
+
+      html += `<div class="stats-grid">`;
+      html += `<div class="stat-box"><div class="stat-value">${eog.procs}</div><div class="stat-label">Total Procs</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${eog.consumed}</div><div class="stat-label">Consumed</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${eog.optimalUses}</div><div class="stat-label">Used on Expensive Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${eog.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${eog.wasted}</div><div class="stat-label">Expired Unused</div></div>`;
+      html += `</div>`;
+
+      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Spell Used</th><th>Spell Cost</th><th>Optimal?</th></tr></thead><tbody>`;
+      for (const d of eog.details) {
+        const style = d.wasted ? 'style="color:#ff6b6b"' : (!d.isOptimal ? 'style="color:#f0ad4e"' : '');
+        html += `<tr ${style}>
+          <td>${UI.formatTime(d.time)}</td>
+          <td>${d.spellUsed || 'Expired'}</td>
+          <td>${d.spellCost > 0 ? UI.formatNumber(d.spellCost) : '-'}</td>
+          <td>${d.wasted ? 'WASTED' : (d.isOptimal ? 'Yes' : 'Low value')}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+      html += `</div>`;
+    }
+
+    // --- HASTE WINDOWS ---
+    if (procs.hasteWindows && procs.hasteWindows.length > 0) {
+      html += `<h3 class="mt-16">Haste Windows</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">Haste benefits long-cast spells (Greater Heal, Prayer of Healing) the most. Prioritize these during haste windows.</p>`;
+
+      for (const haste of procs.hasteWindows) {
+        html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+        html += `<h3 style="color:#ffd700;margin-bottom:4px">${haste.name}</h3>`;
+        html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${haste.description}</p>`;
+
+        html += `<div class="stats-grid">`;
+        html += `<div class="stat-box"><div class="stat-value">${haste.procs}</div><div class="stat-label">Occurrences</div></div>`;
+        html += `<div class="stat-box"><div class="stat-value">${haste.avgCastsPerWindow.toFixed(1)}</div><div class="stat-label">Avg Casts per Window</div></div>`;
+        html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(haste.avgLongCastRatio)}</div><div class="stat-label">Long Cast Usage</div></div>`;
         html += `</div>`;
 
-        html += `<div class="stats-grid" style="margin-bottom:8px;">`;
-        html += `<div class="stat-box"><div class="stat-value">${proc.procs}</div><div class="stat-label">Total Procs</div></div>`;
-        html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(proc.uptimePct)}</div><div class="stat-label">Uptime</div></div>`;
-
-        if (proc.hasUsageTracking) {
-          const usagePct = proc.procs > 0 ? (proc.consumed / proc.procs * 100) : 0;
-          html += `<div class="stat-box"><div class="stat-value">${proc.consumed}</div><div class="stat-label">Used</div></div>`;
-          html += `<div class="stat-box"><div class="stat-value" style="color:${proc.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${proc.wasted}</div><div class="stat-label">Wasted</div></div>`;
-          html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(usagePct)}</div><div class="stat-label">Usage Rate</div></div>`;
+        html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Duration</th><th>Total Casts</th><th>GH</th><th>FH</th><th>PoH</th><th>Long Cast %</th></tr></thead><tbody>`;
+        for (const w of haste.windows) {
+          html += `<tr>
+            <td>${UI.formatTime(w.time)}</td>
+            <td>${(w.duration / 1000).toFixed(1)}s</td>
+            <td>${w.totalCasts}</td>
+            <td>${w.ghCasts}</td>
+            <td>${w.fhCasts}</td>
+            <td>${w.pohCasts}</td>
+            <td>${w.longCastRatio.toFixed(0)}%</td>
+          </tr>`;
         }
-        html += `</div>`;
-
-        // Timeline of procs
-        if (proc.timeline.length > 0 && proc.timeline.length <= 50) {
-          html += `<div style="font-size:12px;color:#888;">Proc times: ${proc.timeline.map(t => UI.formatTime(t.time)).join(', ')}</div>`;
-        }
-
+        html += `</tbody></table>`;
         html += `</div>`;
       }
     }
@@ -435,10 +527,10 @@ class UI {
     html += `<h3 class="mt-16">Mana Consumables & Cooldowns</h3>`;
 
     const allUses = [
-      ...mana.potionUses.map(u => ({ ...u, type: '🧪 Potion' })),
-      ...mana.runeUses.map(u => ({ ...u, type: '💎 Rune', name: u.name })),
-      ...mana.shadowfiendUses.map(u => ({ ...u, type: '👻 Shadowfiend', name: 'Shadowfiend' })),
-      ...mana.innervates.map(u => ({ ...u, type: '🌿 Innervate', name: 'Innervate' })),
+      ...mana.potionUses.map(u => ({ ...u, type: 'Potion' })),
+      ...mana.runeUses.map(u => ({ ...u, type: 'Rune', name: u.name })),
+      ...mana.shadowfiendUses.map(u => ({ ...u, type: 'Shadowfiend', name: 'Shadowfiend' })),
+      ...mana.innervates.map(u => ({ ...u, type: 'Innervate', name: 'Innervate' })),
     ].sort((a, b) => a.time - b.time);
 
     if (allUses.length > 0) {

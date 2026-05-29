@@ -292,84 +292,256 @@ class Analyzer {
 
   // ======= PROCS =======
   computeProcs() {
-    const results = [];
+    const results = {};
 
-    for (const [key, procDef] of Object.entries(PROC_BUFFS)) {
-      // Find buff gains and fades for this proc
-      const gains = this.data.buffs.filter(b =>
-        procDef.ids.includes(b.auraId) && b.type === 'gain'
+    // Helper: find the fade event matching a gain
+    const findFade = (gains, fades, gainIndex, defaultDuration) => {
+      const gainTime = gains[gainIndex].timestamp;
+      const nextGain = gainIndex + 1 < gains.length ? gains[gainIndex + 1].timestamp : Infinity;
+      const matchingFade = fades.find(f => f.timestamp > gainTime && f.timestamp < nextGain);
+      return matchingFade ? matchingFade.timestamp : Math.min(gainTime + defaultDuration, this.data.fightEnd);
+    };
+
+    // Helper: find first cast in a time window
+    const castsInWindow = (start, end, spellFilter = null) => {
+      return this.data.casts.filter(c =>
+        c.timestamp >= start && c.timestamp <= end &&
+        (!spellFilter || spellFilter(c))
       );
-      const fades = this.data.buffs.filter(b =>
-        procDef.ids.includes(b.auraId) && b.type === 'fade'
+    };
+
+    // Helper: get mana cost of a cast from mana events
+    const getManaCost = (cast) => {
+      const manaEvent = this.data.manaEvents.find(e =>
+        e.spellId === cast.spellId && Math.abs(e.timestamp - cast.timestamp) < 100
       );
+      return manaEvent ? manaEvent.manaCost : 0;
+    };
+
+    // ---- CLEARCASTING ----
+    const ccGains = this.data.buffs.filter(b => PROC_BUFFS.CLEARCASTING.ids.includes(b.auraId) && b.type === 'gain');
+    const ccFades = this.data.buffs.filter(b => PROC_BUFFS.CLEARCASTING.ids.includes(b.auraId) && b.type === 'fade');
+
+    if (ccGains.length > 0) {
+      const ccDetails = [];
+      let totalManaSaved = 0;
+      let totalPotentialSavings = 0;
+      // Max rank Greater Heal costs ~820, Prayer of Healing ~1255
+      const maxExpensiveSpellCost = 820;
+
+      for (let i = 0; i < ccGains.length; i++) {
+        const gainTime = ccGains[i].timestamp;
+        const fadeTime = findFade(ccGains, ccFades, i, 15000);
+
+        // Find the first cast after proc (the one that consumed it)
+        const nextCasts = castsInWindow(gainTime + 50, fadeTime + 500);
+        const consumedBy = nextCasts.length > 0 ? nextCasts[0] : null;
+
+        let manaSaved = 0;
+        let spellUsed = null;
+        let isOptimal = false;
+
+        if (consumedBy) {
+          manaSaved = getManaCost(consumedBy);
+          spellUsed = consumedBy.spellName;
+          // Optimal = used on an expensive spell (Greater Heal max rank, PoH, etc.)
+          isOptimal = manaSaved >= 600;
+        }
+
+        totalManaSaved += manaSaved;
+        totalPotentialSavings += maxExpensiveSpellCost;
+
+        ccDetails.push({
+          time: gainTime - this.data.fightStart,
+          spellUsed,
+          manaSaved,
+          isOptimal,
+          wasted: !consumedBy,
+        });
+      }
+
+      results.clearcasting = {
+        name: 'Clearcasting (Holy Concentration)',
+        description: 'After a critical heal, your next spell costs no mana. Best used on your most expensive spell.',
+        procs: ccGains.length,
+        totalManaSaved,
+        totalPotentialSavings,
+        efficiency: totalPotentialSavings > 0 ? (totalManaSaved / totalPotentialSavings) * 100 : 0,
+        optimalUses: ccDetails.filter(d => d.isOptimal).length,
+        suboptimalUses: ccDetails.filter(d => !d.isOptimal && !d.wasted).length,
+        wasted: ccDetails.filter(d => d.wasted).length,
+        details: ccDetails,
+      };
+    }
+
+    // ---- FLEXIBILITY (T4 2pc) ----
+    const flexGains = this.data.buffs.filter(b => PROC_BUFFS.FLEXIBILITY.ids.includes(b.auraId) && b.type === 'gain');
+    const flexFades = this.data.buffs.filter(b => PROC_BUFFS.FLEXIBILITY.ids.includes(b.auraId) && b.type === 'fade');
+
+    if (flexGains.length > 0) {
+      const flexDetails = [];
+      let ghFollowups = 0;
+
+      for (let i = 0; i < flexGains.length; i++) {
+        const gainTime = flexGains[i].timestamp;
+        const fadeTime = findFade(flexGains, flexFades, i, 6000);
+
+        // Did they cast Greater Heal during this window?
+        const ghCasts = castsInWindow(gainTime + 50, fadeTime + 500,
+          c => SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+        const otherCasts = castsInWindow(gainTime + 50, fadeTime + 500,
+          c => !SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+
+        const usedOnGH = ghCasts.length > 0;
+        if (usedOnGH) ghFollowups++;
+
+        flexDetails.push({
+          time: gainTime - this.data.fightStart,
+          usedOnGH,
+          castInstead: !usedOnGH && otherCasts.length > 0 ? otherCasts[0].spellName : null,
+          expired: !usedOnGH && otherCasts.length === 0,
+        });
+      }
+
+      results.flexibility = {
+        name: 'Flexibility (T4 2pc)',
+        description: 'Flash Heal casts proc a cast time reduction for Greater Heal. Capitalize by following Flash Heals with Greater Heals.',
+        procs: flexGains.length,
+        ghFollowups,
+        ghRate: (ghFollowups / flexGains.length) * 100,
+        missedOpportunities: flexGains.length - ghFollowups,
+        details: flexDetails,
+      };
+    }
+
+    // ---- SURGE OF LIGHT ----
+    const solGains = this.data.buffs.filter(b => PROC_BUFFS.SURGE_OF_LIGHT.ids.includes(b.auraId) && b.type === 'gain');
+    const solFades = this.data.buffs.filter(b => PROC_BUFFS.SURGE_OF_LIGHT.ids.includes(b.auraId) && b.type === 'fade');
+
+    if (solGains.length > 0) {
+      const solDetails = [];
+
+      for (let i = 0; i < solGains.length; i++) {
+        const gainTime = solGains[i].timestamp;
+        const fadeTime = findFade(solGains, solFades, i, 10000);
+
+        // Was Flash Heal cast during this window?
+        const fhCasts = castsInWindow(gainTime + 50, fadeTime + 500,
+          c => SPELL_IDS.FLASH_HEAL.includes(c.spellId));
+
+        const consumed = fhCasts.length > 0;
+        const reactionTime = consumed ? fhCasts[0].timestamp - gainTime : null;
+
+        solDetails.push({
+          time: gainTime - this.data.fightStart,
+          consumed,
+          reactionTime,
+        });
+      }
+
+      const consumedCount = solDetails.filter(d => d.consumed).length;
+      const reactionTimes = solDetails.filter(d => d.reactionTime !== null).map(d => d.reactionTime);
+      const avgReaction = reactionTimes.length > 0 ?
+        reactionTimes.reduce((s, t) => s + t, 0) / reactionTimes.length : 0;
+
+      results.surgeOfLight = {
+        name: 'Surge of Light',
+        description: 'After a spell crit, your next Flash Heal is instant and free. React quickly to use before it expires (10s).',
+        procs: solGains.length,
+        consumed: consumedCount,
+        wasted: solGains.length - consumedCount,
+        usageRate: (consumedCount / solGains.length) * 100,
+        avgReactionMs: Math.round(avgReaction),
+        details: solDetails,
+      };
+    }
+
+    // ---- EYE OF GRUUL ----
+    const eogGains = this.data.buffs.filter(b => PROC_BUFFS.EYE_OF_GRUUL.ids.includes(b.auraId) && b.type === 'gain');
+    const eogFades = this.data.buffs.filter(b => PROC_BUFFS.EYE_OF_GRUUL.ids.includes(b.auraId) && b.type === 'fade');
+
+    if (eogGains.length > 0) {
+      const eogDetails = [];
+      const manaDiscount = 450;
+
+      for (let i = 0; i < eogGains.length; i++) {
+        const gainTime = eogGains[i].timestamp;
+        const fadeTime = findFade(eogGains, eogFades, i, 15000);
+
+        const nextCasts = castsInWindow(gainTime + 50, fadeTime + 500);
+        const consumedBy = nextCasts.length > 0 ? nextCasts[0] : null;
+        const spellCost = consumedBy ? getManaCost(consumedBy) : 0;
+        // Optimal if used on a spell that costs more than 450 (otherwise you waste some discount)
+        const isOptimal = spellCost >= manaDiscount;
+
+        eogDetails.push({
+          time: gainTime - this.data.fightStart,
+          spellUsed: consumedBy ? consumedBy.spellName : null,
+          spellCost,
+          wasted: !consumedBy,
+          isOptimal,
+        });
+      }
+
+      const consumedCount = eogDetails.filter(d => !d.wasted).length;
+      results.eyeOfGruul = {
+        name: 'Eye of Gruul',
+        description: 'Proc reduces next heal mana cost by 450. Maximize value by using on an expensive spell (Greater Heal, Prayer of Healing).',
+        procs: eogGains.length,
+        consumed: consumedCount,
+        wasted: eogGains.length - consumedCount,
+        optimalUses: eogDetails.filter(d => d.isOptimal).length,
+        details: eogDetails,
+      };
+    }
+
+    // ---- HASTE PROCS (Scarab, Bloodlust, Power Infusion) ----
+    const hasteProcs = [
+      { key: 'QUAGMIRRANS_EYE', duration: 6000 },
+      { key: 'BLOODLUST', duration: 40000 },
+      { key: 'POWER_INFUSION', duration: 15000 },
+    ];
+
+    results.hasteWindows = [];
+
+    for (const { key, duration } of hasteProcs) {
+      const procDef = PROC_BUFFS[key];
+      const gains = this.data.buffs.filter(b => procDef.ids.includes(b.auraId) && b.type === 'gain');
+      const fadesH = this.data.buffs.filter(b => procDef.ids.includes(b.auraId) && b.type === 'fade');
 
       if (gains.length === 0) continue;
 
-      // Calculate uptime
-      let totalUptime = 0;
+      const windows = [];
       for (let i = 0; i < gains.length; i++) {
         const gainTime = gains[i].timestamp;
-        // Find matching fade
-        const matchingFade = fades.find(f => f.timestamp > gainTime &&
-          (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
-        const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 15000; // assume 15s if no fade
-        totalUptime += Math.min(fadeTime, this.data.fightEnd) - gainTime;
-      }
-      const uptimePct = (totalUptime / this.fightDuration) * 100;
+        const fadeTime = findFade(gains, fadesH, i, duration);
+        const windowDuration = fadeTime - gainTime;
 
-      // Check if proc was consumed (used) vs wasted (expired)
-      let consumed = 0;
-      let wasted = 0;
+        const windowCasts = castsInWindow(gainTime, fadeTime);
+        const ghCasts = windowCasts.filter(c => SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+        const fhCasts = windowCasts.filter(c => SPELL_IDS.FLASH_HEAL.includes(c.spellId));
+        const pohCasts = windowCasts.filter(c => SPELL_IDS.PRAYER_OF_HEALING.includes(c.spellId));
 
-      if (key === 'CLEARCASTING' || key === 'SURGE_OF_LIGHT' || key === 'EYE_OF_GRUUL') {
-        // These are "use it or lose it" procs - check if a cast happened during the buff window
-        for (let i = 0; i < gains.length; i++) {
-          const gainTime = gains[i].timestamp;
-          const matchingFade = fades.find(f => f.timestamp > gainTime &&
-            (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
-          const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 15000;
-
-          // Was a qualifying cast made during this window?
-          const castDuring = this.data.casts.find(c =>
-            c.timestamp > gainTime && c.timestamp <= fadeTime + 200
-          );
-          if (castDuring) {
-            consumed++;
-          } else {
-            wasted++;
-          }
-        }
-      } else if (key === 'FLEXIBILITY') {
-        // Flexibility: check if Greater Heal was cast during the buff
-        for (let i = 0; i < gains.length; i++) {
-          const gainTime = gains[i].timestamp;
-          const matchingFade = fades.find(f => f.timestamp > gainTime &&
-            (i + 1 >= gains.length || f.timestamp < gains[i + 1].timestamp));
-          const fadeTime = matchingFade ? matchingFade.timestamp : gainTime + 6000;
-
-          const ghCast = this.data.casts.find(c =>
-            c.timestamp > gainTime && c.timestamp <= fadeTime + 200 &&
-            SPELL_IDS.GREATER_HEAL.includes(c.spellId)
-          );
-          if (ghCast) {
-            consumed++;
-          } else {
-            wasted++;
-          }
-        }
+        windows.push({
+          time: gainTime - this.data.fightStart,
+          duration: windowDuration,
+          totalCasts: windowCasts.length,
+          ghCasts: ghCasts.length,
+          fhCasts: fhCasts.length,
+          pohCasts: pohCasts.length,
+          // Haste benefits long casts most
+          longCastRatio: windowCasts.length > 0 ?
+            (ghCasts.length + pohCasts.length) / windowCasts.length * 100 : 0,
+        });
       }
 
-      results.push({
-        key,
+      results.hasteWindows.push({
         name: procDef.name,
         description: procDef.description,
-        category: procDef.category,
         procs: gains.length,
-        uptimePct,
-        consumed,
-        wasted,
-        hasUsageTracking: consumed + wasted > 0,
-        timeline: gains.map(g => ({ time: g.timestamp - this.data.fightStart })),
+        windows,
+        avgCastsPerWindow: windows.reduce((s, w) => s + w.totalCasts, 0) / windows.length,
+        avgLongCastRatio: windows.reduce((s, w) => s + w.longCastRatio, 0) / windows.length,
       });
     }
 
