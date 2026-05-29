@@ -373,41 +373,85 @@ class Analyzer {
     }
 
     // ---- FLEXIBILITY (T4 2pc) ----
-    const flexGains = this.data.buffs.filter(b => PROC_BUFFS.FLEXIBILITY.ids.includes(b.auraId) && b.type === 'gain');
-    const flexFades = this.data.buffs.filter(b => PROC_BUFFS.FLEXIBILITY.ids.includes(b.auraId) && b.type === 'fade');
+    // Flexibility stacks up to 5. We care about what happens at max stacks.
+    const flexEvents = this.data.buffs.filter(b =>
+      PROC_BUFFS.FLEXIBILITY.ids.includes(b.auraId)
+    );
 
-    if (flexGains.length > 0) {
+    if (flexEvents.length > 0) {
+      // Build stack windows: track each time stacks reach 5, and what follows
+      const maxStacks = 5;
       const flexDetails = [];
-      let ghFollowups = 0;
+      let currentStacks = 0;
+      let maxStackReachedAt = null;
 
-      for (let i = 0; i < flexGains.length; i++) {
-        const gainTime = flexGains[i].timestamp;
-        const fadeTime = findFade(flexGains, flexFades, i, 6000);
+      for (let i = 0; i < flexEvents.length; i++) {
+        const event = flexEvents[i];
 
-        // Did they cast Greater Heal during this window?
-        const ghCasts = castsInWindow(gainTime + 50, fadeTime + 500,
-          c => SPELL_IDS.GREATER_HEAL.includes(c.spellId));
-        const otherCasts = castsInWindow(gainTime + 50, fadeTime + 500,
-          c => !SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+        if (event.type === 'gain') {
+          // applybuff = first stack, refreshbuff at 5 = maintaining
+          if (currentStacks === 0) currentStacks = 1;
+          if (currentStacks >= maxStacks && maxStackReachedAt === null) {
+            maxStackReachedAt = event.timestamp;
+          }
+        } else if (event.type === 'stack') {
+          currentStacks = event.stack;
+          if (currentStacks >= maxStacks && maxStackReachedAt === null) {
+            maxStackReachedAt = event.timestamp;
+          }
+        } else if (event.type === 'fade') {
+          // Buff was consumed or expired
+          const fadeTime = event.timestamp;
 
-        const usedOnGH = ghCasts.length > 0;
-        if (usedOnGH) ghFollowups++;
+          if (maxStackReachedAt !== null) {
+            // Reached max stacks - what consumed it?
+            const castAfterMax = castsInWindow(maxStackReachedAt + 50, fadeTime + 500);
+            const ghCast = castAfterMax.find(c => SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+            const otherCast = castAfterMax.find(c => !SPELL_IDS.GREATER_HEAL.includes(c.spellId) &&
+              !SPELL_IDS.FLASH_HEAL.includes(c.spellId)); // Ignore flash heals (they build stacks)
 
-        flexDetails.push({
-          time: gainTime - this.data.fightStart,
-          usedOnGH,
-          castInstead: !usedOnGH && otherCasts.length > 0 ? otherCasts[0].spellName : null,
-          expired: !usedOnGH && otherCasts.length === 0,
-        });
+            flexDetails.push({
+              time: maxStackReachedAt - this.data.fightStart,
+              stacksAtUse: maxStacks,
+              usedOnGH: !!ghCast,
+              spellUsed: ghCast ? 'Greater Heal' : (otherCast ? otherCast.spellName : null),
+              expired: !ghCast && !otherCast,
+              status: ghCast ? 'optimal' : (!otherCast ? 'expired' : 'suboptimal'),
+            });
+          } else if (currentStacks > 0 && currentStacks < maxStacks) {
+            // Faded before reaching max stacks
+            const castBeforeFade = castsInWindow(fadeTime - 3500, fadeTime + 500);
+            const ghCast = castBeforeFade.find(c => SPELL_IDS.GREATER_HEAL.includes(c.spellId));
+
+            flexDetails.push({
+              time: fadeTime - this.data.fightStart,
+              stacksAtUse: currentStacks,
+              usedOnGH: !!ghCast,
+              spellUsed: ghCast ? 'Greater Heal' : null,
+              expired: !ghCast,
+              status: ghCast ? 'early' : 'expired',
+            });
+          }
+
+          currentStacks = 0;
+          maxStackReachedAt = null;
+        }
       }
+
+      const optimalUses = flexDetails.filter(d => d.status === 'optimal').length;
+      const earlyUses = flexDetails.filter(d => d.status === 'early').length;
+      const suboptimalUses = flexDetails.filter(d => d.status === 'suboptimal').length;
+      const expiredUses = flexDetails.filter(d => d.status === 'expired').length;
 
       results.flexibility = {
         name: 'Flexibility (T4 2pc)',
-        description: 'Flash Heal casts proc a cast time reduction for Greater Heal. Capitalize by following Flash Heals with Greater Heals.',
-        procs: flexGains.length,
-        ghFollowups,
-        ghRate: (ghFollowups / flexGains.length) * 100,
-        missedOpportunities: flexGains.length - ghFollowups,
+        description: 'Each Flash Heal builds a stack (max 5), reducing Greater Heal cast time. Ideally, build to 5 stacks then cast Greater Heal.',
+        totalWindows: flexDetails.length,
+        optimalUses,
+        earlyUses,
+        suboptimalUses,
+        expiredUses,
+        optimalRate: flexDetails.length > 0 ? (optimalUses / flexDetails.length) * 100 : 0,
         details: flexDetails,
       };
     }

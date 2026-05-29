@@ -126,6 +126,17 @@ class LogParser {
           timestamp: event.timestamp,
           auraId,
           auraName: event.ability.name,
+          stack: event.stack || 1,
+          fightTime: event.timestamp - this.fightStart,
+        });
+      } else if (event.type === 'applybuffstack') {
+        activeBuffs.set(auraId, event.timestamp);
+        buffs.push({
+          type: 'stack',
+          timestamp: event.timestamp,
+          auraId,
+          auraName: event.ability.name,
+          stack: event.stack || 1,
           fightTime: event.timestamp - this.fightStart,
         });
       } else if (event.type === 'removebuff') {

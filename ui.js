@@ -307,19 +307,28 @@ class UI {
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${flex.description}</p>`;
 
       html += `<div class="stats-grid">`;
-      html += `<div class="stat-box"><div class="stat-value">${flex.procs}</div><div class="stat-label">Total Procs</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value">${flex.ghFollowups}</div><div class="stat-label">Followed by Greater Heal</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(flex.ghRate)}</div><div class="stat-label">GH Follow-up Rate</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.missedOpportunities > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.missedOpportunities}</div><div class="stat-label">Missed Opportunities</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${flex.totalWindows}</div><div class="stat-label">Stack Windows</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${flex.optimalUses}</div><div class="stat-label">GH at 5 Stacks</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.earlyUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.earlyUses}</div><div class="stat-label">GH Before Max Stacks</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.suboptimalUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.suboptimalUses}</div><div class="stat-label">Used on Wrong Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.expiredUses > 0 ? '#ff6b6b' : '#4ecdc4'}">${flex.expiredUses}</div><div class="stat-label">Expired Unused</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(flex.optimalRate)}</div><div class="stat-label">Optimal Usage Rate</div></div>`;
       html += `</div>`;
 
-      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Used on GH?</th><th>Cast Instead</th></tr></thead><tbody>`;
+      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Stacks</th><th>Spell Used</th><th>Result</th></tr></thead><tbody>`;
       for (const d of flex.details) {
-        const style = d.usedOnGH ? '' : 'style="color:#f0ad4e"';
-        html += `<tr ${style}>
+        const color = d.status === 'optimal' ? '' :
+          d.status === 'early' ? 'style="color:#f0ad4e"' :
+          d.status === 'expired' ? 'style="color:#ff6b6b"' : 'style="color:#f0ad4e"';
+        const statusLabel = d.status === 'optimal' ? 'Optimal (GH at 5)' :
+          d.status === 'early' ? `Used early (${d.stacksAtUse} stacks)` :
+          d.status === 'expired' ? 'Expired unused' :
+          `Wrong spell (${d.spellUsed})`;
+        html += `<tr ${color}>
           <td>${UI.formatTime(d.time)}</td>
-          <td>${d.usedOnGH ? 'Yes' : 'No'}</td>
-          <td>${d.castInstead || (d.expired ? 'Expired' : '-')}</td>
+          <td>${d.stacksAtUse}/5</td>
+          <td>${d.spellUsed || '-'}</td>
+          <td>${statusLabel}</td>
         </tr>`;
       }
       html += `</tbody></table>`;
