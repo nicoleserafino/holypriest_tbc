@@ -287,3 +287,37 @@ function getSpellSchool(spellId) {
   if (key && SPELL_DATA[key]) return SPELL_DATA[key].school || 'holy';
   return 'holy';
 }
+
+const SPELL_RANK_MAP = {};
+
+function buildRankMap() {
+    const entries = [
+        { key: 'GREATER_HEAL', name: 'Greater Heal', ids: SPELL_IDS.GREATER_HEAL },
+        { key: 'FLASH_HEAL', name: 'Flash Heal', ids: SPELL_IDS.FLASH_HEAL },
+        { key: 'HEAL', name: 'Heal', ids: SPELL_IDS.HEAL },
+        { key: 'PRAYER_OF_HEALING', name: 'Prayer of Healing', ids: SPELL_IDS.PRAYER_OF_HEALING },
+        { key: 'CIRCLE_OF_HEALING', name: 'Circle of Healing', ids: SPELL_IDS.CIRCLE_OF_HEALING },
+        { key: 'RENEW', name: 'Renew', ids: SPELL_IDS.RENEW },
+        { key: 'BINDING_HEAL', name: 'Binding Heal', ids: SPELL_IDS.BINDING_HEAL },
+        { key: 'POWER_WORD_SHIELD', name: 'Power Word: Shield', ids: SPELL_IDS.POWER_WORD_SHIELD },
+    ];
+
+    for (const { key, name, ids } of entries) {
+        for (let i = 0; i < ids.length; i++) {
+            SPELL_RANK_MAP[ids[i]] = { spellName: name, rank: i + 1, maxRank: ids.length, key };
+        }
+    }
+}
+
+buildRankMap();
+
+function getSpellManaCost(spellId) {
+    const rankInfo = SPELL_RANK_MAP[spellId];
+    if (!rankInfo) return 0;
+
+    const spellData = SPELL_DATA[rankInfo.key];
+    if (!spellData || !Array.isArray(spellData.manaCost)) return 0;
+
+    return spellData.manaCost[rankInfo.rank - 1] || spellData.manaCost[spellData.manaCost.length - 1] || 0;
+}
+

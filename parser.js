@@ -24,19 +24,21 @@ class LogParser {
    * Parse all events into structured format
    */
   parse() {
-    const casts = this.parseCasts();
+    const { casts, begincasts } = this.parseCasts();
     const heals = this.parseHeals();
     const buffs = this.parseBuffs();
     const manaEvents = this.parseManaEvents();
+    const damageTaken = this.parseDamageTaken();
 
-    // Link heals to casts where possible
     this.linkHealsToCasts(casts, heals);
 
     return {
       casts,
+      begincasts,
       heals,
       buffs,
       manaEvents,
+      damageTaken,
       fightDuration: this.fightDuration,
       fightStart: this.fightStart,
       fightEnd: this.fightEnd,
@@ -48,36 +50,82 @@ class LogParser {
    */
   parseCasts() {
     const casts = [];
-    const castStarts = new Map(); // spellId -> start timestamp
+    const begincasts = [];
+    const pendingBegincasts = new Map();
 
     for (const event of this.rawData.castEvents) {
+      if (!event.ability?.guid) continue;
+
+      const spellId = event.ability.guid;
+      const spellKey = getSpellDataKey(spellId);
+      const baseEvent = {
+        timestamp: event.timestamp,
+        spellId,
+        spellKey,
+        spellName: event.ability.name || getSpellName(spellId),
+        targetId: event.targetID,
+        targetName: this.resolveActor(event.targetID, event.targetName),
+        rank: getSpellRank(spellId),
+        fightTime: event.timestamp - this.fightStart,
+      };
+
       if (event.type === 'begincast') {
-        castStarts.set(event.ability.guid, event.timestamp);
+        const begincast = {
+          ...baseEvent,
+          matchedCastTimestamp: null,
+          canceled: false,
+        };
+        begincasts.push(begincast);
+
+        if (!pendingBegincasts.has(spellId)) {
+          pendingBegincasts.set(spellId, []);
+        }
+        pendingBegincasts.get(spellId).push(begincast);
         continue;
       }
 
-      if (event.type === 'cast') {
-        const spellId = event.ability.guid;
-        const spellKey = getSpellDataKey(spellId);
-        const startTime = castStarts.get(spellId) || event.timestamp;
-        castStarts.delete(spellId);
+      if (event.type !== 'cast') continue;
 
-        casts.push({
-          timestamp: event.timestamp,
-          startTimestamp: startTime,
-          spellId,
-          spellKey,
-          spellName: event.ability.name || getSpellName(spellId),
-          targetId: event.targetID,
-          targetName: this.resolveActor(event.targetID, event.targetName),
-          castTime: event.timestamp - startTime,
-          rank: getSpellRank(spellId),
-          fightTime: event.timestamp - this.fightStart,
-        });
+      const pendingForSpell = pendingBegincasts.get(spellId) || [];
+      const castWindow = Math.max(500, (SPELL_DATA[spellKey]?.baseCastTime || 0) + 500);
+      let matchedBegincast = null;
+
+      for (let i = 0; i < pendingForSpell.length; i++) {
+        const candidate = pendingForSpell[i];
+        const delta = event.timestamp - candidate.timestamp;
+        if (candidate.matchedCastTimestamp) continue;
+        if (delta >= 0 && delta <= castWindow) {
+          matchedBegincast = candidate;
+          pendingForSpell.splice(i, 1);
+          break;
+        }
+      }
+
+      if (pendingForSpell.length === 0) {
+        pendingBegincasts.delete(spellId);
+      }
+
+      if (matchedBegincast) {
+        matchedBegincast.matchedCastTimestamp = event.timestamp;
+      }
+
+      casts.push({
+        ...baseEvent,
+        startTimestamp: matchedBegincast ? matchedBegincast.timestamp : event.timestamp,
+        castTime: matchedBegincast ? event.timestamp - matchedBegincast.timestamp : 0,
+      });
+    }
+
+    for (const begincast of begincasts) {
+      if (!begincast.matchedCastTimestamp) {
+        begincast.canceled = true;
       }
     }
 
-    return casts.sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      casts: casts.sort((a, b) => a.timestamp - b.timestamp),
+      begincasts: begincasts.sort((a, b) => a.timestamp - b.timestamp),
+    };
   }
 
   /**
@@ -163,8 +211,8 @@ class LogParser {
   parseManaEvents() {
     const events = [];
 
-    // Extract mana info from cast events
     for (const event of this.rawData.castEvents) {
+      if (event.type !== 'cast') continue;
       if (event.classResources && event.classResources.length > 0) {
         const manaRes = event.classResources[0];
         if (manaRes && manaRes.amount !== undefined) {
@@ -172,8 +220,8 @@ class LogParser {
             timestamp: event.timestamp,
             type: 'cast',
             manaCost: manaRes.max || 0,
-            currentMana: manaRes.type,  // 'type' field is actually current mana after cast
-            maxMana: manaRes.amount,     // 'amount' field is max mana
+            currentMana: manaRes.type,
+            maxMana: manaRes.amount,
             spellId: event.ability?.guid,
             spellName: event.ability?.name,
             fightTime: event.timestamp - this.fightStart,
@@ -184,6 +232,26 @@ class LogParser {
 
     events.sort((a, b) => a.timestamp - b.timestamp);
     return events;
+  }
+
+  parseDamageTaken() {
+    const events = [];
+
+    for (const event of this.rawData.damageTakenEvents || []) {
+      events.push({
+        timestamp: event.timestamp,
+        sourceId: event.sourceID,
+        sourceName: this.resolveActor(event.sourceID, event.sourceName),
+        spellId: event.ability?.guid,
+        spellName: event.ability?.name || 'Unknown',
+        amount: event.amount || 0,
+        absorbed: event.absorbed || 0,
+        overkill: event.overkill || 0,
+        fightTime: event.timestamp - this.fightStart,
+      });
+    }
+
+    return events.sort((a, b) => a.timestamp - b.timestamp);
   }
 
   /**

@@ -63,7 +63,11 @@ class UI {
   // ======= THROUGHPUT =======
   static renderThroughput(throughput) {
     const el = document.getElementById('throughput-content');
+    const split = throughput.healingSplit || { spellBreakdown: [], tankHealingPct: 0, raidHealingPct: 0, tankHealing: 0, raidHealing: 0 };
+    const binding = throughput.bindingHeal || { opportunities: [] };
+
     let html = `
+      <h3>Healing by Spell</h3>
       <table>
         <thead>
           <tr>
@@ -80,7 +84,7 @@ class UI {
         <tbody>
     `;
 
-    for (const spell of throughput) {
+    for (const spell of throughput.spellBreakdown) {
       const school = spell.key ? (SPELL_DATA[spell.key]?.school || 'holy') : 'holy';
       html += `
         <tr>
@@ -96,7 +100,98 @@ class UI {
       `;
     }
 
-    html += '</tbody></table>';
+    html += `</tbody></table>`;
+
+    html += `
+      <h3 class="mt-16">Tank vs Raid Healing Split</h3>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(split.tankHealingPct)}</div><div class="stat-label">Tank Healing</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(split.raidHealingPct)}</div><div class="stat-label">Raid Healing</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatNumber(split.tankHealing)}</div><div class="stat-label">Healing to Tanks</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatNumber(split.raidHealing)}</div><div class="stat-label">Healing to Raid</div></div>
+      </div>
+    `;
+
+    if (split.spellBreakdown.length > 0) {
+      html += `<table><thead><tr><th>Spell</th><th class="text-right">Tank Healing</th><th class="text-right">Raid Healing</th><th class="text-right">Tank Share</th></tr></thead><tbody>`;
+      for (const row of split.spellBreakdown) {
+        html += `<tr>
+          <td>${row.name}</td>
+          <td class="text-right">${UI.formatNumber(row.tankHealing)}</td>
+          <td class="text-right">${UI.formatNumber(row.raidHealing)}</td>
+          <td class="text-right">${UI.formatPct(row.tankPct)}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    html += `
+      <h3 class="mt-16">Binding Heal Awareness</h3>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-value">${binding.timesDamaged || 0}</div><div class="stat-label">Damage Windows</div></div>
+        <div class="stat-box"><div class="stat-value">${binding.bindingHealUsed || 0}</div><div class="stat-label">Binding Heal Used</div></div>
+        <div class="stat-box"><div class="stat-value">${binding.flashHealUsedInstead || 0}</div><div class="stat-label">Flash Heal Instead</div></div>
+        <div class="stat-box"><div class="stat-value">${binding.missedOpportunities || 0}</div><div class="stat-label">Missed Opportunities</div></div>
+      </div>
+    `;
+
+    if (binding.opportunities.length > 0) {
+      html += `<table><thead><tr><th>Time</th><th>Damage Taken</th><th>Response</th><th>Outcome</th></tr></thead><tbody>`;
+      for (const row of binding.opportunities.slice(0, 15)) {
+        html += `<tr>
+          <td>${UI.formatTime(row.time)}</td>
+          <td>${UI.formatNumber(row.damageTaken)}</td>
+          <td>${row.responseSpell}</td>
+          <td>${row.outcome}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    el.innerHTML = html;
+  }
+
+
+  static renderDownranking(downranking) {
+    const el = document.getElementById('downranking-content');
+    let html = '';
+
+    if (downranking.rankDistribution.length > 0) {
+      html += `<h3>Rank Distribution</h3>`;
+      html += `<table><thead><tr><th>Spell</th><th>Rank</th><th class="text-right">Casts</th><th class="text-right">Healing</th><th class="text-right">Overheal</th></tr></thead><tbody>`;
+      for (const row of downranking.rankDistribution.slice(0, 20)) {
+        html += `<tr>
+          <td>${row.spellName}</td>
+          <td>${row.rank}/${row.maxRank}</td>
+          <td class="text-right">${row.casts}</td>
+          <td class="text-right">${UI.formatNumber(row.healing)}</td>
+          <td class="text-right">${UI.formatPct(row.overhealPct)}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    for (const spell of downranking.spellBreakdown) {
+      html += `<h3 class="mt-16">${spell.spellName}</h3>`;
+      html += `<table><thead><tr><th>Rank</th><th class="text-right">Casts</th><th class="text-right">Healing</th><th class="text-right">Overheal</th><th class="text-right">Avg Heal</th><th class="text-right">Usage</th><th>Note</th></tr></thead><tbody>`;
+      for (const rank of spell.ranks) {
+        html += `<tr${rank.couldDownrankFurther ? ' style="color:#f0ad4e"' : ''}>
+          <td>${rank.rank}/${rank.maxRank}</td>
+          <td class="text-right">${rank.casts}</td>
+          <td class="text-right">${UI.formatNumber(rank.totalHealing)}</td>
+          <td class="text-right">${UI.formatPct(rank.overhealPct)}</td>
+          <td class="text-right">${UI.formatNumber(rank.avgHealAmount)}</td>
+          <td class="text-right">${UI.formatPct(rank.usagePct)}</td>
+          <td>${rank.couldDownrankFurther ? 'Could downrank further' : ''}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    if (!html) {
+      html = '<p style="color:#999">No ranked healing spells were detected.</p>';
+    }
+
     el.innerHTML = html;
   }
 
@@ -105,71 +200,42 @@ class UI {
     const el = document.getElementById('cooldowns-content');
     let html = '';
 
-    // Circle of Healing
     const coh = cooldowns.circleOfHealing;
     html += `
       <h3 class="spell-holy">Circle of Healing</h3>
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-value">${coh.casts}</div>
-          <div class="stat-label">Total Casts</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${coh.avgTargetsHit.toFixed(1)}</div>
-          <div class="stat-label">Avg Targets Hit</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatNumber(coh.totalHealing)}</div>
-          <div class="stat-label">Total Healing</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(coh.overhealPct)}</div>
-          <div class="stat-label">Overheal %</div>
-        </div>
+        <div class="stat-box"><div class="stat-value">${coh.casts}</div><div class="stat-label">Total Casts</div></div>
+        <div class="stat-box"><div class="stat-value">${coh.avgTargetsHit.toFixed(1)}</div><div class="stat-label">Avg Targets Hit</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatNumber(coh.totalHealing)}</div><div class="stat-label">Total Healing</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(coh.overhealPct)}</div><div class="stat-label">Overheal %</div></div>
       </div>
     `;
 
-    // Prayer of Mending
     const pom = cooldowns.prayerOfMending;
     html += `
       <h3 class="spell-holy mt-16">Prayer of Mending</h3>
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-value">${pom.casts} / ${pom.possibleCasts}</div>
-          <div class="stat-label">Casts / Possible</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(pom.usagePct)}</div>
-          <div class="stat-label">Usage Rate</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${pom.totalBounces}</div>
-          <div class="stat-label">Total Bounces</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${pom.avgBouncesPerCast.toFixed(1)}</div>
-          <div class="stat-label">Avg Bounces/Cast</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatNumber(pom.totalHealing)}</div>
-          <div class="stat-label">Total Healing</div>
-        </div>
+        <div class="stat-box"><div class="stat-value">${pom.casts} / ${pom.possibleCasts}</div><div class="stat-label">Casts / Possible</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(pom.usagePct)}</div><div class="stat-label">Usage Rate</div></div>
+        <div class="stat-box"><div class="stat-value">${pom.totalBounces}</div><div class="stat-label">Total Bounces</div></div>
+        <div class="stat-box"><div class="stat-value">${pom.avgBouncesPerCast.toFixed(1)}</div><div class="stat-label">Avg Bounces/Cast</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(pom.tankTargetingRate)}</div><div class="stat-label">Tank Targeting Rate</div></div>
       </div>
     `;
+    if (pom.targetBreakdown.length > 0) {
+      html += `<table><thead><tr><th>Time</th><th>Target</th><th>Role</th></tr></thead><tbody>`;
+      for (const row of pom.targetBreakdown.slice(0, 15)) {
+        html += `<tr><td>${UI.formatTime(row.time)}</td><td>${row.targetName || 'Unknown'}</td><td>${row.isTank ? 'Tank' : 'Raid'}</td></tr>`;
+      }
+      html += `</tbody></table>`;
+    }
 
-    // Inner Focus
     const inf = cooldowns.innerFocus;
     html += `
       <h3 class="spell-disc mt-16">Inner Focus</h3>
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-value">${inf.casts} / ${inf.possibleCasts}</div>
-          <div class="stat-label">Uses / Possible</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(inf.usagePct)}</div>
-          <div class="stat-label">Usage Rate</div>
-        </div>
+        <div class="stat-box"><div class="stat-value">${inf.casts} / ${inf.possibleCasts}</div><div class="stat-label">Uses / Possible</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(inf.usagePct)}</div><div class="stat-label">Usage Rate</div></div>
       </div>
       ${inf.usedOn.length > 0 ? `<p class="mt-8" style="color:#aaa">Used on: ${inf.usedOn.join(', ')}</p>` : ''}
     `;
@@ -261,155 +327,121 @@ class UI {
 
     if (!procs || (Object.keys(procs).length === 0) ||
         (!procs.clearcasting && !procs.flexibility && !procs.surgeOfLight &&
-         !procs.eyeOfGruul && (!procs.hasteWindows || procs.hasteWindows.length === 0))) {
-      el.innerHTML = `<p style="color:#999">No tracked procs detected in this fight. Tracked: Clearcasting, Surge of Light, Flexibility (T4 2pc), Eye of Gruul, Scarab of the Infinite Cycle, Power Infusion, Bloodlust/Heroism.</p>`;
+         !procs.eyeOfGruul && !procs.innerFocus && (!procs.hasteWindows || procs.hasteWindows.length === 0))) {
+      el.innerHTML = `<p style="color:#999">No tracked procs detected in this fight. Tracked: Clearcasting, Surge of Light, Flexibility (T4 2pc), Eye of Gruul, Inner Focus, Scarab of the Infinite Cycle, Power Infusion, Bloodlust/Heroism.</p>`;
       return;
     }
 
     let html = '';
 
-    // --- CLEARCASTING ---
+    const renderDetails = (rows, headers) => {
+      let table = `<table style="margin-top:12px"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+      table += rows.join('');
+      table += `</tbody></table>`;
+      return table;
+    };
+
     if (procs.clearcasting) {
       const cc = procs.clearcasting;
       html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
       html += `<h3 style="color:#ffd700;margin-bottom:4px">${cc.name}</h3>`;
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${cc.description}</p>`;
-
       html += `<div class="stats-grid">`;
       html += `<div class="stat-box"><div class="stat-value">${cc.procs}</div><div class="stat-label">Total Procs</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${UI.formatNumber(cc.totalManaSaved)}</div><div class="stat-label">Mana Saved</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(cc.efficiency)}</div><div class="stat-label">Efficiency vs Max Rank GH</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value">${cc.optimalUses}</div><div class="stat-label">Used on Expensive Spell</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value" style="color:${cc.suboptimalUses > 0 ? '#ff6b6b' : '#4ecdc4'}">${cc.suboptimalUses}</div><div class="stat-label">Used on Cheap Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(cc.efficiency)}</div><div class="stat-label">Efficiency</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${cc.optimalUses}</div><div class="stat-label">Expensive Spell Uses</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${cc.suboptimalUses > 0 ? '#ff6b6b' : '#4ecdc4'}">${cc.suboptimalUses}</div><div class="stat-label">Cheap Spell Uses</div></div>`;
       html += `<div class="stat-box"><div class="stat-value" style="color:${cc.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${cc.wasted}</div><div class="stat-label">Expired Unused</div></div>`;
       html += `</div>`;
-
-      // Detail table
-      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Spell Used</th><th>Mana Saved</th><th>Optimal?</th></tr></thead><tbody>`;
-      for (const d of cc.details) {
-        const style = d.wasted ? 'style="color:#ff6b6b"' : (!d.isOptimal ? 'style="color:#f0ad4e"' : '');
-        html += `<tr ${style}>
-          <td>${UI.formatTime(d.time)}</td>
-          <td>${d.spellUsed || 'Expired'}</td>
-          <td>${d.manaSaved > 0 ? UI.formatNumber(d.manaSaved) : '-'}</td>
-          <td>${d.wasted ? 'WASTED' : (d.isOptimal ? 'Yes' : 'Low value')}</td>
-        </tr>`;
-      }
-      html += `</tbody></table>`;
+      html += renderDetails(cc.details.map(d => `<tr${d.wasted ? ' style="color:#ff6b6b"' : (!d.isOptimal ? ' style="color:#f0ad4e"' : '')}><td>${UI.formatTime(d.time)}</td><td>${d.spellUsed || 'Expired'}</td><td>${d.manaSaved > 0 ? UI.formatNumber(d.manaSaved) : '-'}</td><td>${d.wasted ? 'Wasted' : (d.isOptimal ? 'Yes' : 'Low value')}</td></tr>`), ['Time', 'Spell Used', 'Mana Saved', 'Optimal?']);
       html += `</div>`;
     }
 
-    // --- FLEXIBILITY ---
     if (procs.flexibility) {
       const flex = procs.flexibility;
       html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
       html += `<h3 style="color:#ffd700;margin-bottom:4px">${flex.name}</h3>`;
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${flex.description}</p>`;
-
       html += `<div class="stats-grid">`;
       html += `<div class="stat-box"><div class="stat-value">${flex.totalWindows}</div><div class="stat-label">Stack Windows</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${flex.optimalUses}</div><div class="stat-label">GH at 5 Stacks</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.earlyUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.earlyUses}</div><div class="stat-label">GH Before Max Stacks</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.suboptimalUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.suboptimalUses}</div><div class="stat-label">Used on Wrong Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.earlyUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.earlyUses}</div><div class="stat-label">GH Before Max</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${flex.suboptimalUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${flex.suboptimalUses}</div><div class="stat-label">Wrong Spell</div></div>`;
       html += `<div class="stat-box"><div class="stat-value" style="color:${flex.expiredUses > 0 ? '#ff6b6b' : '#4ecdc4'}">${flex.expiredUses}</div><div class="stat-label">Expired Unused</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(flex.optimalRate)}</div><div class="stat-label">Optimal Usage Rate</div></div>`;
       html += `</div>`;
-
-      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Stacks</th><th>Spell Used</th><th>Result</th></tr></thead><tbody>`;
-      for (const d of flex.details) {
-        const color = d.status === 'optimal' ? '' :
-          d.status === 'early' ? 'style="color:#f0ad4e"' :
-          d.status === 'expired' ? 'style="color:#ff6b6b"' : 'style="color:#f0ad4e"';
-        const statusLabel = d.status === 'optimal' ? 'Optimal (GH at 5)' :
-          d.status === 'early' ? `Used early (${d.stacksAtUse} stacks)` :
-          d.status === 'expired' ? 'Expired unused' :
-          `Wrong spell (${d.spellUsed})`;
-        html += `<tr ${color}>
-          <td>${UI.formatTime(d.time)}</td>
-          <td>${d.stacksAtUse}/5</td>
-          <td>${d.spellUsed || '-'}</td>
-          <td>${statusLabel}</td>
-        </tr>`;
-      }
-      html += `</tbody></table>`;
+      html += renderDetails(flex.details.map(d => {
+        const statusLabel = d.status === 'optimal' ? 'Optimal (GH at 5)' : d.status === 'early' ? `Used early (${d.stacksAtUse} stacks)` : d.status === 'expired' ? 'Expired unused' : `Wrong spell (${d.spellUsed})`;
+        const color = d.status === 'optimal' ? '' : d.status === 'expired' ? ' style="color:#ff6b6b"' : ' style="color:#f0ad4e"';
+        return `<tr${color}><td>${UI.formatTime(d.time)}</td><td>${d.stacksAtUse}/5</td><td>${d.spellUsed || '-'}</td><td>${statusLabel}</td></tr>`;
+      }), ['Time', 'Stacks', 'Spell Used', 'Result']);
       html += `</div>`;
     }
 
-    // --- SURGE OF LIGHT ---
     if (procs.surgeOfLight) {
       const sol = procs.surgeOfLight;
       html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
       html += `<h3 style="color:#ffd700;margin-bottom:4px">${sol.name}</h3>`;
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${sol.description}</p>`;
-
       html += `<div class="stats-grid">`;
       html += `<div class="stat-box"><div class="stat-value">${sol.procs}</div><div class="stat-label">Total Procs</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${sol.consumed}</div><div class="stat-label">Consumed</div></div>`;
       html += `<div class="stat-box"><div class="stat-value" style="color:${sol.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${sol.wasted}</div><div class="stat-label">Wasted</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(sol.usageRate)}</div><div class="stat-label">Usage Rate</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${sol.avgReactionMs}ms</div><div class="stat-label">Avg Reaction Time</div></div>`;
-      html += `</div>`;
-      html += `</div>`;
+      html += `</div></div>`;
     }
 
-    // --- EYE OF GRUUL ---
     if (procs.eyeOfGruul) {
       const eog = procs.eyeOfGruul;
       html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
       html += `<h3 style="color:#ffd700;margin-bottom:4px">${eog.name}</h3>`;
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${eog.description}</p>`;
-
       html += `<div class="stats-grid">`;
       html += `<div class="stat-box"><div class="stat-value">${eog.procs}</div><div class="stat-label">Total Procs</div></div>`;
       html += `<div class="stat-box"><div class="stat-value">${eog.consumed}</div><div class="stat-label">Consumed</div></div>`;
-      html += `<div class="stat-box"><div class="stat-value">${eog.optimalUses}</div><div class="stat-label">Used on Expensive Spell</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${eog.optimalUses}</div><div class="stat-label">Expensive Spell Uses</div></div>`;
       html += `<div class="stat-box"><div class="stat-value" style="color:${eog.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${eog.wasted}</div><div class="stat-label">Expired Unused</div></div>`;
       html += `</div>`;
-
-      html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Spell Used</th><th>Spell Cost</th><th>Optimal?</th></tr></thead><tbody>`;
-      for (const d of eog.details) {
-        const style = d.wasted ? 'style="color:#ff6b6b"' : (!d.isOptimal ? 'style="color:#f0ad4e"' : '');
-        html += `<tr ${style}>
-          <td>${UI.formatTime(d.time)}</td>
-          <td>${d.spellUsed || 'Expired'}</td>
-          <td>${d.spellCost > 0 ? UI.formatNumber(d.spellCost) : '-'}</td>
-          <td>${d.wasted ? 'WASTED' : (d.isOptimal ? 'Yes' : 'Low value')}</td>
-        </tr>`;
-      }
-      html += `</tbody></table>`;
+      html += renderDetails(eog.details.map(d => `<tr${d.wasted ? ' style="color:#ff6b6b"' : (!d.isOptimal ? ' style="color:#f0ad4e"' : '')}><td>${UI.formatTime(d.time)}</td><td>${d.spellUsed || 'Expired'}</td><td>${d.spellCost > 0 ? UI.formatNumber(d.spellCost) : '-'}</td><td>${d.wasted ? 'Wasted' : (d.isOptimal ? 'Yes' : 'Low value')}</td></tr>`), ['Time', 'Spell Used', 'Spell Cost', 'Optimal?']);
       html += `</div>`;
     }
 
-    // --- HASTE WINDOWS ---
+    if (procs.innerFocus) {
+      const inf = procs.innerFocus;
+      html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
+      html += `<h3 style="color:#ffd700;margin-bottom:4px">${inf.name}</h3>`;
+      html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${inf.description}</p>`;
+      html += `<div class="stats-grid">`;
+      html += `<div class="stat-box"><div class="stat-value">${inf.procs}</div><div class="stat-label">Buff Gains</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${inf.consumed}</div><div class="stat-label">Paired Casts</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${inf.optimalUses}</div><div class="stat-label">Optimal Pairings</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${inf.suboptimalUses > 0 ? '#f0ad4e' : '#4ecdc4'}">${inf.suboptimalUses}</div><div class="stat-label">Suboptimal Pairings</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value">${UI.formatNumber(inf.totalManaSaved)}</div><div class="stat-label">Mana Saved</div></div>`;
+      html += `<div class="stat-box"><div class="stat-value" style="color:${inf.wasted > 0 ? '#ff6b6b' : '#4ecdc4'}">${inf.wasted}</div><div class="stat-label">Expired Unused</div></div>`;
+      html += `</div>`;
+      html += renderDetails(inf.details.map(d => `<tr${d.wasted ? ' style="color:#ff6b6b"' : (!d.isOptimal ? ' style="color:#f0ad4e"' : '')}><td>${UI.formatTime(d.time)}</td><td>${d.spellUsed || 'Expired'}</td><td>${d.manaSaved > 0 ? UI.formatNumber(d.manaSaved) : '-'}</td><td>${d.wasted ? 'Wasted' : (d.isOptimal ? 'Yes' : 'Low value')}</td></tr>`), ['Time', 'Spell Used', 'Mana Saved', 'Optimal?']);
+      html += `</div>`;
+    }
+
     if (procs.hasteWindows && procs.hasteWindows.length > 0) {
       html += `<h3 class="mt-16">Haste Windows</h3>`;
       html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">Haste benefits long-cast spells (Greater Heal, Prayer of Healing) the most. Prioritize these during haste windows.</p>`;
-
       for (const haste of procs.hasteWindows) {
         html += `<div class="card" style="margin-bottom:16px;padding:16px;background:#1a1a2e;">`;
         html += `<h3 style="color:#ffd700;margin-bottom:4px">${haste.name}</h3>`;
         html += `<p style="color:#aaa;font-size:13px;margin-bottom:12px">${haste.description}</p>`;
-
         html += `<div class="stats-grid">`;
         html += `<div class="stat-box"><div class="stat-value">${haste.procs}</div><div class="stat-label">Occurrences</div></div>`;
         html += `<div class="stat-box"><div class="stat-value">${haste.avgCastsPerWindow.toFixed(1)}</div><div class="stat-label">Avg Casts per Window</div></div>`;
         html += `<div class="stat-box"><div class="stat-value">${UI.formatPct(haste.avgLongCastRatio)}</div><div class="stat-label">Long Cast Usage</div></div>`;
         html += `</div>`;
-
         html += `<table style="margin-top:12px"><thead><tr><th>Time</th><th>Duration</th><th>Total Casts</th><th>GH</th><th>FH</th><th>PoH</th><th>Long Cast %</th></tr></thead><tbody>`;
         for (const w of haste.windows) {
-          html += `<tr>
-            <td>${UI.formatTime(w.time)}</td>
-            <td>${(w.duration / 1000).toFixed(1)}s</td>
-            <td>${w.totalCasts}</td>
-            <td>${w.ghCasts}</td>
-            <td>${w.fhCasts}</td>
-            <td>${w.pohCasts}</td>
-            <td>${w.longCastRatio.toFixed(0)}%</td>
-          </tr>`;
+          html += `<tr><td>${UI.formatTime(w.time)}</td><td>${(w.duration / 1000).toFixed(1)}s</td><td>${w.totalCasts}</td><td>${w.ghCasts}</td><td>${w.fhCasts}</td><td>${w.pohCasts}</td><td>${w.longCastRatio.toFixed(0)}%</td></tr>`;
         }
-        html += `</tbody></table>`;
-        html += `</div>`;
+        html += `</tbody></table></div>`;
       }
     }
 
@@ -457,7 +489,7 @@ class UI {
     if (renew.targetBreakdown.length > 0) {
       html += `<h3 class="mt-16">Top Renew Targets</h3><table><thead><tr><th>Target</th><th class="text-right">Casts</th><th class="text-right">Ticks</th><th class="text-right">Healing</th></tr></thead><tbody>`;
       for (const t of renew.targetBreakdown) {
-        html += `<tr><td>${t.name}${t.isTank ? ' 🛡️' : ''}</td><td class="text-right">${t.casts}</td><td class="text-right">${t.ticks}</td><td class="text-right">${UI.formatNumber(t.healing)}</td></tr>`;
+        html += `<tr><td>${t.name}${t.isTank ? ' (Tank)' : ''}</td><td class="text-right">${t.casts}</td><td class="text-right">${t.ticks}</td><td class="text-right">${UI.formatNumber(t.healing)}</td></tr>`;
       }
       html += `</tbody></table>`;
     }
@@ -581,29 +613,22 @@ class UI {
   // ======= ACTIVITY =======
   static renderActivity(activity) {
     const el = document.getElementById('activity-content');
+    const cancel = activity.cancelCasting;
+    const five = activity.fiveSecondRule;
+
     let html = `
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatPct(activity.gcdUsage)}</div>
-          <div class="stat-label">GCD Usage</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${Math.round(activity.avgLatency)}ms</div>
-          <div class="stat-label">Avg Latency</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${activity.castsPerMinute.toFixed(1)}</div>
-          <div class="stat-label">Casts/Minute</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${UI.formatTime(activity.idleTime)}</div>
-          <div class="stat-label">Idle Time</div>
-        </div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(activity.gcdUsage)}</div><div class="stat-label">GCD Usage</div></div>
+        <div class="stat-box"><div class="stat-value">${Math.round(activity.avgLatency)}ms</div><div class="stat-label">Avg Latency</div></div>
+        <div class="stat-box"><div class="stat-value">${activity.castsPerMinute.toFixed(1)}</div><div class="stat-label">Casts/Minute</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatTime(activity.idleTime)}</div><div class="stat-label">Idle Time</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(cancel.cancelRate)}</div><div class="stat-label">Cancel Rate</div></div>
+        <div class="stat-box"><div class="stat-value">${UI.formatPct(five.spiritRegenPct)}</div><div class="stat-label">Spirit Regen Time</div></div>
       </div>
     `;
 
     if (activity.latencyBreakdown.length > 0) {
-      html += `<h3 class="mt-16">Latency Samples (gaps > 100ms)</h3>`;
+      html += `<h3 class="mt-16">Latency Samples (gaps &gt; 100ms)</h3>`;
       const bigGaps = activity.latencyBreakdown.filter(l => l.gap > 100).slice(0, 20);
       if (bigGaps.length > 0) {
         html += `<table><thead><tr><th>Time</th><th>Gap</th><th>After</th><th>Before</th></tr></thead><tbody>`;
@@ -612,6 +637,34 @@ class UI {
         }
         html += `</tbody></table>`;
       }
+    }
+
+    html += `<h3 class="mt-16">Cancel-Casting</h3>`;
+    html += `<div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">${cancel.totalBegincasts}</div><div class="stat-label">Begincasts</div></div>
+      <div class="stat-box"><div class="stat-value">${cancel.successfulCasts}</div><div class="stat-label">Completed Casts</div></div>
+      <div class="stat-box"><div class="stat-value">${cancel.cancels}</div><div class="stat-label">Cancels</div></div>
+    </div>`;
+    if (cancel.spellBreakdown.length > 0) {
+      html += `<table><thead><tr><th>Spell</th><th class="text-right">Begincasts</th><th class="text-right">Completed</th><th class="text-right">Cancels</th><th class="text-right">Cancel Rate</th></tr></thead><tbody>`;
+      for (const row of cancel.spellBreakdown) {
+        html += `<tr><td>${row.spellName}</td><td class="text-right">${row.begincasts}</td><td class="text-right">${row.successful}</td><td class="text-right">${row.cancels}</td><td class="text-right">${UI.formatPct(row.cancelRate)}</td></tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+
+    html += `<h3 class="mt-16">Five-Second Rule</h3>`;
+    html += `<div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">${UI.formatTime(five.timeInFiveSecondRule)}</div><div class="stat-label">Time in 5SR</div></div>
+      <div class="stat-box"><div class="stat-value">${UI.formatTime(five.timeOutsideFiveSecondRule)}</div><div class="stat-label">Time Outside 5SR</div></div>
+      <div class="stat-box"><div class="stat-value">${five.manaSpendingCasts}</div><div class="stat-label">Mana-Spending Casts</div></div>
+    </div>`;
+    if (five.regenWindows.length > 0) {
+      html += `<table><thead><tr><th>Regen Window Start</th><th>Duration</th></tr></thead><tbody>`;
+      for (const window of five.regenWindows.slice(0, 15)) {
+        html += `<tr><td>${UI.formatTime(window.start)}</td><td>${UI.formatTime(window.duration)}</td></tr>`;
+      }
+      html += `</tbody></table>`;
     }
 
     el.innerHTML = html;

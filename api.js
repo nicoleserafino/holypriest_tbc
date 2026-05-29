@@ -111,7 +111,7 @@ class WCLApi {
   async loadAnalysisData(reportId, fight, playerId, onProgress) {
     const { start_time, end_time } = fight;
     let step = 0;
-    const totalSteps = 5;
+    const totalSteps = 6;
 
     const progress = (label) => {
       step++;
@@ -129,7 +129,6 @@ class WCLApi {
     const buffEventsTarget = await this.getEvents(reportId, 'buffs', start_time, end_time, null, {
       targetid: playerId,
     });
-    // Merge and deduplicate
     const buffMap = new Map();
     for (const e of [...buffEventsSource, ...buffEventsTarget]) {
       const key = `${e.timestamp}-${e.ability?.guid}-${e.type}`;
@@ -137,19 +136,24 @@ class WCLApi {
     }
     const buffEvents = Array.from(buffMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
+    progress('Loading damage taken...');
+    const damageTakenEvents = await this.getEvents(reportId, 'damage-taken', start_time, end_time, playerId);
+
     progress('Loading combatant info...');
     const summary = await this.getCombatantInfo(reportId, fight.id, start_time, end_time);
 
-    // Mana data is extracted from classResources in cast/healing events (no separate endpoint in v1)
+    progress('Processing complete...');
+
     return {
       healingEvents,
       castEvents,
       buffEvents,
-      resourceEvents: [], // mana extracted from cast/heal events in parser
+      damageTakenEvents,
+      resourceEvents: [],
       combatantInfo: summary,
       fight,
       playerId,
-      actors: null, // populated by caller from report data
+      actors: null,
     };
   }
 }

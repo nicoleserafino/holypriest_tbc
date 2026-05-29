@@ -188,6 +188,7 @@
 
     UI.renderSummary(results.summary);
     UI.renderThroughput(results.throughput);
+    UI.renderDownranking(results.downranking);
     UI.renderCooldowns(results.cooldowns);
     UI.renderCoH(results.coh);
     UI.renderProcs(results.procs);
@@ -196,9 +197,7 @@
     UI.renderActivity(results.activity);
     UI.renderTimeline(results.timeline);
 
-    // Add observations to summary card
     const summaryCard = document.getElementById('summary-card');
-    // Remove old observations
     const oldObs = summaryCard.querySelectorAll('.observation, h3');
     oldObs.forEach(el => {
       if (el.textContent.includes('Observations')) el.remove();
